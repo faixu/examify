@@ -1,6 +1,6 @@
 import { initializeApp } from "firebase/app";
 import { getAuth, GoogleAuthProvider, signInWithPopup, signOut, onAuthStateChanged, User } from "firebase/auth";
-import { getFirestore, collection, doc, getDoc, setDoc, updateDoc, increment, arrayUnion, query, where, getDocs, limit, orderBy, onSnapshot, Timestamp, addDoc } from "firebase/firestore";
+import { getFirestore, collection, doc, getDoc, setDoc, updateDoc, increment, arrayUnion, query, where, getDocs, limit, orderBy, onSnapshot, Timestamp, addDoc, deleteDoc } from "firebase/firestore";
 import firebaseConfig from "../firebase-applet-config.json";
 
 const app = initializeApp(firebaseConfig);
@@ -8,7 +8,7 @@ export const auth = getAuth(app);
 export const db = getFirestore(app, firebaseConfig.firestoreDatabaseId);
 export const googleProvider = new GoogleAuthProvider();
 
-export { signInWithPopup, signOut, onAuthStateChanged, collection, doc, getDoc, setDoc, updateDoc, increment, arrayUnion, query, where, getDocs, limit, orderBy, onSnapshot, Timestamp, addDoc };
+export { signInWithPopup, signOut, onAuthStateChanged, collection, doc, getDoc, setDoc, updateDoc, increment, arrayUnion, query, where, getDocs, limit, orderBy, onSnapshot, Timestamp, addDoc, deleteDoc };
 export type { User };
 
 export enum OperationType {
