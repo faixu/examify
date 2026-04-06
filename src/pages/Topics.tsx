@@ -1,7 +1,7 @@
 import { useParams, Link, useNavigate } from "react-router-dom";
 import { CATEGORIES } from "../constants";
 import { motion } from "motion/react";
-import { ArrowLeft, BookOpen, ChevronRight, Zap, Trophy, Clock } from "lucide-react";
+import { ArrowLeft, BookOpen, ChevronRight, Zap, Trophy, Clock, CheckCircle } from "lucide-react";
 import { useEffect, useState } from "react";
 import { Category } from "../types";
 
@@ -99,41 +99,73 @@ export default function Topics() {
         ))}
       </div>
 
-      {/* Sectional & Full Mock Tests Card */}
-      <section className="pt-12">
-        <div className="bg-slate-900 rounded-[2.5rem] p-8 md:p-16 text-white relative overflow-hidden">
-          <div className="absolute top-0 right-0 w-64 h-64 bg-blue-600 rounded-full blur-[120px] opacity-20 -translate-y-1/2 translate-x-1/2" />
+      {/* Premium Tests Sections */}
+      <section className="pt-12 grid grid-cols-1 lg:grid-cols-2 gap-8">
+        {/* Sectional Tests Card */}
+        <div className="bg-slate-900 rounded-[2.5rem] p-8 md:p-12 text-white relative overflow-hidden flex flex-col justify-between border border-slate-800">
+          <div className="absolute top-0 right-0 w-48 h-48 bg-blue-600 rounded-full blur-[100px] opacity-10 -translate-y-1/2 translate-x-1/2" />
           
-          <div className="flex flex-col md:flex-row items-center justify-between gap-12 relative z-10">
-            <div className="space-y-6 text-center md:text-left">
-              <div className="inline-flex items-center gap-2 px-4 py-2 bg-blue-600/20 text-blue-400 rounded-full text-xs font-black uppercase tracking-widest border border-blue-500/30">
-                <Trophy size={14} />
-                <span>Premium Feature</span>
+          <div className="space-y-6 relative z-10">
+            <div className="inline-flex items-center gap-2 px-4 py-2 bg-blue-600/20 text-blue-400 rounded-full text-xs font-black uppercase tracking-widest border border-blue-500/30">
+              <Zap size={14} />
+              <span>Sectional</span>
+            </div>
+            <h2 className="text-3xl font-black leading-tight">
+              Sectional Tests
+            </h2>
+            <p className="text-slate-400 text-base leading-relaxed">
+              Master specific sections like English, Math, or GK with focused tests 
+              designed to improve your speed and accuracy in individual subjects.
+            </p>
+            <div className="flex flex-wrap gap-4 pt-2">
+              <div className="flex items-center gap-2 text-sm font-bold text-slate-300">
+                <CheckCircle size={16} className="text-blue-500" />
+                Subject Focused
               </div>
-              <h2 className="text-3xl md:text-4xl font-black leading-tight">
-                Sectional & Full Mock Tests
-              </h2>
-              <p className="text-slate-400 text-lg max-w-xl leading-relaxed">
-                Take your preparation to the next level with timed full-length mock tests 
-                designed by experts to simulate the actual JKSSB and SSC exam environment.
-              </p>
-              <div className="flex flex-wrap justify-center md:justify-start gap-6 pt-4">
-                <div className="flex items-center gap-3">
-                  <div className="w-10 h-10 bg-slate-800 rounded-xl flex items-center justify-center text-blue-400">
-                    <Clock size={20} />
-                  </div>
-                  <div className="text-sm font-bold">Timed Sessions</div>
-                </div>
-                <div className="flex items-center gap-3">
-                  <div className="w-10 h-10 bg-slate-800 rounded-xl flex items-center justify-center text-green-400">
-                    <Zap size={20} />
-                  </div>
-                  <div className="text-sm font-bold">Instant Analysis</div>
-                </div>
+              <div className="flex items-center gap-2 text-sm font-bold text-slate-300">
+                <CheckCircle size={16} className="text-blue-500" />
+                Topic Mastery
               </div>
             </div>
-            
-            <button className="w-full md:w-auto bg-blue-600 text-white px-10 py-5 rounded-2xl font-black text-lg hover:bg-blue-700 transition-all shadow-2xl shadow-blue-900/20 active:scale-95">
+          </div>
+          
+          <div className="pt-8 relative z-10">
+            <button className="w-full bg-blue-600 text-white px-8 py-4 rounded-2xl font-black text-base hover:bg-blue-700 transition-all shadow-xl shadow-blue-900/20 active:scale-95">
+              Unlock Mock Tests
+            </button>
+          </div>
+        </div>
+
+        {/* Full Mock Tests Card */}
+        <div className="bg-slate-900 rounded-[2.5rem] p-8 md:p-12 text-white relative overflow-hidden flex flex-col justify-between border border-slate-800">
+          <div className="absolute top-0 right-0 w-48 h-48 bg-purple-600 rounded-full blur-[100px] opacity-10 -translate-y-1/2 translate-x-1/2" />
+          
+          <div className="space-y-6 relative z-10">
+            <div className="inline-flex items-center gap-2 px-4 py-2 bg-purple-600/20 text-purple-400 rounded-full text-xs font-black uppercase tracking-widest border border-purple-500/30">
+              <Trophy size={14} />
+              <span>Full Mock</span>
+            </div>
+            <h2 className="text-3xl font-black leading-tight">
+              Full Mock Tests
+            </h2>
+            <p className="text-slate-400 text-base leading-relaxed">
+              Experience the real exam pressure with full-length mock tests 
+              simulating the exact JKSSB and SSC environment and difficulty levels.
+            </p>
+            <div className="flex flex-wrap gap-4 pt-2">
+              <div className="flex items-center gap-2 text-sm font-bold text-slate-300">
+                <Clock size={16} className="text-purple-500" />
+                Timed Sessions
+              </div>
+              <div className="flex items-center gap-2 text-sm font-bold text-slate-300">
+                <Zap size={16} className="text-purple-500" />
+                Instant Analysis
+              </div>
+            </div>
+          </div>
+          
+          <div className="pt-8 relative z-10">
+            <button className="w-full bg-purple-600 text-white px-8 py-4 rounded-2xl font-black text-base hover:bg-purple-700 transition-all shadow-xl shadow-purple-900/20 active:scale-95">
               Unlock Mock Tests
             </button>
           </div>
