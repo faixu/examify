@@ -39,7 +39,7 @@ export default function Admin({ user }: AdminProps) {
   const [editingQuestion, setEditingQuestion] = useState<any | null>(null);
   const [isEditing, setIsEditing] = useState(false);
 
-  const isAdmin = user?.email === "Flust786@gmail.com";
+  const isAdmin = user?.email?.toLowerCase() === "flust786@gmail.com";
 
   useEffect(() => {
     if (!isAdmin && user) {

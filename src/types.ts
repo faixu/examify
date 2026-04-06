@@ -48,3 +48,16 @@ export interface Topic {
   name: string;
   description: string;
 }
+
+export interface MockTest {
+  id?: string;
+  title: string;
+  description: string;
+  category: string;
+  topic?: string;
+  type: "topic" | "sectional" | "full";
+  questions: string[]; // Array of MCQ IDs
+  duration: number; // in minutes
+  totalMarks: number;
+  createdAt: any;
+}

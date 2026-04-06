@@ -10,6 +10,7 @@ import Topics from "./pages/Topics";
 import Test from "./pages/Test";
 import Dashboard from "./pages/Dashboard";
 import Admin from "./pages/Admin";
+import SuperAdmin from "./pages/SuperAdmin";
 import Leaderboard from "./pages/Leaderboard";
 import About from "./pages/About";
 import { motion, AnimatePresence } from "motion/react";
@@ -79,6 +80,7 @@ export default function App() {
               <Route path="/test/:topicId" element={<Test user={user} />} />
               <Route path="/dashboard" element={<Dashboard user={user} />} />
               <Route path="/admin" element={<Admin user={user} />} />
+              <Route path="/super-admin" element={<SuperAdmin user={user} />} />
               <Route path="/leaderboard" element={<Leaderboard />} />
               <Route path="/about" element={<About />} />
             </Routes>
