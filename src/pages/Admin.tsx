@@ -409,7 +409,7 @@ export default function Admin({ user }: AdminProps) {
                       min="1"
                       max="20"
                       value={questionsPerTopic}
-                      onChange={(e) => setQuestionsPerTopic(parseInt(e.target.value))}
+                      onChange={(e) => setQuestionsPerTopic(parseInt(e.target.value) || 0)}
                       disabled={loading}
                       className="w-full bg-slate-800 border border-slate-700 rounded-xl px-4 py-3 text-white focus:ring-2 focus:ring-blue-500 outline-none disabled:opacity-50"
                     />

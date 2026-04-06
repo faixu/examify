@@ -53,7 +53,7 @@ service cloud.firestore {
       return isAuthenticated() && 
         ((exists(/databases/$(database)/documents/users/$(request.auth.uid)) && 
           get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'admin') ||
-         (request.auth.token.email == "Flust786@gmail.com" && request.auth.token.email_verified == true));
+         (request.auth.token.email.lower() == "flust786@gmail.com" && request.auth.token.email_verified == true));
     }
     function isValidEmail(email) {
       return email is string && email.matches("^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\\.[a-zA-Z]{2,}$");
@@ -117,6 +117,11 @@ service cloud.firestore {
       allow read: if isAuthenticated() && (resource.data.userId == request.auth.uid || isAdmin());
       allow create: if isAuthenticated() && isValidAttempt(request.resource.data);
       allow update, delete: if isAdmin();
+    }
+
+    match /mockTests/{testId} {
+      allow read: if true; // Publicly readable for students
+      allow write: if isAdmin();
     }
   }
 }

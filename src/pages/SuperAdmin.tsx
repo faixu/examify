@@ -46,6 +46,9 @@ export default function SuperAdmin({ user }: SuperAdminProps) {
   const [mockTests, setMockTests] = useState<MockTest[]>([]);
   const [editingTest, setEditingTest] = useState<any | null>(null);
   const [isTestModalOpen, setIsTestModalOpen] = useState(false);
+  const [testMcqSearch, setTestMcqSearch] = useState("");
+  const [testMcqResults, setTestMcqResults] = useState<MCQ[]>([]);
+  const [isSearchingMcqs, setIsSearchingMcqs] = useState(false);
 
   const isAdmin = user?.email?.toLowerCase() === "flust786@gmail.com";
 
@@ -123,6 +126,34 @@ export default function SuperAdmin({ user }: SuperAdminProps) {
       console.error("Failed to fetch mock tests", error);
     }
   };
+
+  const searchMcqsForTest = async () => {
+    if (!testMcqSearch && !editingTest?.category) return;
+    setIsSearchingMcqs(true);
+    try {
+      let q = query(collection(db, "mcqs"));
+      if (editingTest?.category) {
+        q = query(q, where("category", "==", editingTest.category));
+      }
+      const snapshot = await getDocs(q);
+      let results = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as MCQ));
+      if (testMcqSearch) {
+        results = results.filter(m => m.question.toLowerCase().includes(testMcqSearch.toLowerCase()));
+      }
+      setTestMcqResults(results.slice(0, 20));
+    } catch (error) {
+      console.error("Search failed", error);
+    } finally {
+      setIsSearchingMcqs(false);
+    }
+  };
+
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      if (isTestModalOpen) searchMcqsForTest();
+    }, 500);
+    return () => clearTimeout(timer);
+  }, [testMcqSearch, editingTest?.category, isTestModalOpen]);
 
   const handleSeed = async () => {
     setLoading(true);
@@ -295,7 +326,7 @@ export default function SuperAdmin({ user }: SuperAdminProps) {
                     <input 
                       type="number" 
                       value={seedCount} 
-                      onChange={e => setSeedCount(parseInt(e.target.value))}
+                      onChange={e => setSeedCount(parseInt(e.target.value) || 0)}
                       className="w-16 bg-white border border-slate-200 rounded-lg px-2 py-1 text-center font-bold"
                     />
                   </div>
@@ -472,24 +503,108 @@ export default function SuperAdmin({ user }: SuperAdminProps) {
       <AnimatePresence>
         {isTestModalOpen && (
           <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-sm">
-            <motion.div initial={{ opacity: 0, scale: 0.95 }} animate={{ opacity: 1, scale: 1 }} className="bg-white w-full max-w-2xl rounded-[2.5rem] p-8 space-y-6">
-              <h3 className="text-2xl font-black text-slate-900">Mock Test Config</h3>
-              <form onSubmit={handleSaveTest} className="space-y-4">
-                <input value={editingTest.title} onChange={e => setEditingTest({...editingTest, title: e.target.value})} className="w-full p-4 bg-slate-50 border border-slate-200 rounded-xl" placeholder="Test Title" />
-                <textarea value={editingTest.description} onChange={e => setEditingTest({...editingTest, description: e.target.value})} className="w-full p-4 bg-slate-50 border border-slate-200 rounded-xl" placeholder="Description" rows={2} />
-                <div className="grid grid-cols-2 gap-4">
-                  <select value={editingTest.category} onChange={e => setEditingTest({...editingTest, category: e.target.value})} className="p-3 bg-slate-50 border border-slate-200 rounded-xl">
-                    {CATEGORIES.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
-                  </select>
-                  <select value={editingTest.type} onChange={e => setEditingTest({...editingTest, type: e.target.value})} className="p-3 bg-slate-50 border border-slate-200 rounded-xl">
-                    <option value="topic">Topic Test</option>
-                    <option value="sectional">Sectional</option>
-                    <option value="full">Full Mock</option>
-                  </select>
+            <motion.div initial={{ opacity: 0, scale: 0.95 }} animate={{ opacity: 1, scale: 1 }} className="bg-white w-full max-w-3xl rounded-[2.5rem] p-8 space-y-6 max-h-[90vh] overflow-y-auto custom-scrollbar">
+              <div className="flex justify-between items-center">
+                <h3 className="text-2xl font-black text-slate-900">Mock Test Config</h3>
+                <button onClick={() => setIsTestModalOpen(false)} className="p-2 hover:bg-slate-100 rounded-full transition-all">
+                  <XCircle size={24} className="text-slate-400" />
+                </button>
+              </div>
+              
+              <form onSubmit={handleSaveTest} className="space-y-6">
+                <div className="space-y-4">
+                  <input value={editingTest.title} onChange={e => setEditingTest({...editingTest, title: e.target.value})} className="w-full p-4 bg-slate-50 border border-slate-200 rounded-xl outline-none focus:ring-2 focus:ring-blue-500" placeholder="Test Title" required />
+                  <textarea value={editingTest.description} onChange={e => setEditingTest({...editingTest, description: e.target.value})} className="w-full p-4 bg-slate-50 border border-slate-200 rounded-xl outline-none focus:ring-2 focus:ring-blue-500" placeholder="Description" rows={2} />
+                  
+                  <div className="grid grid-cols-2 gap-4">
+                    <div className="space-y-1">
+                      <label className="text-[10px] font-black uppercase tracking-widest text-slate-400 ml-2">Category</label>
+                      <select value={editingTest.category} onChange={e => setEditingTest({...editingTest, category: e.target.value, questions: []})} className="w-full p-3 bg-slate-50 border border-slate-200 rounded-xl outline-none focus:ring-2 focus:ring-blue-500">
+                        {CATEGORIES.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
+                      </select>
+                    </div>
+                    <div className="space-y-1">
+                      <label className="text-[10px] font-black uppercase tracking-widest text-slate-400 ml-2">Test Type</label>
+                      <select value={editingTest.type} onChange={e => setEditingTest({...editingTest, type: e.target.value})} className="w-full p-3 bg-slate-50 border border-slate-200 rounded-xl outline-none focus:ring-2 focus:ring-blue-500">
+                        <option value="topic">Topic Test</option>
+                        <option value="sectional">Sectional</option>
+                        <option value="full">Full Mock</option>
+                      </select>
+                    </div>
+                  </div>
+
+                  <div className="grid grid-cols-2 gap-4">
+                    <div className="space-y-1">
+                      <label className="text-[10px] font-black uppercase tracking-widest text-slate-400 ml-2">Duration (Mins)</label>
+                      <input type="number" value={editingTest.duration} onChange={e => setEditingTest({...editingTest, duration: parseInt(e.target.value) || 0})} className="w-full p-3 bg-slate-50 border border-slate-200 rounded-xl outline-none focus:ring-2 focus:ring-blue-500" />
+                    </div>
+                    <div className="space-y-1">
+                      <label className="text-[10px] font-black uppercase tracking-widest text-slate-400 ml-2">Total Marks</label>
+                      <input type="number" value={editingTest.totalMarks} onChange={e => setEditingTest({...editingTest, totalMarks: parseInt(e.target.value) || 0})} className="w-full p-3 bg-slate-50 border border-slate-200 rounded-xl outline-none focus:ring-2 focus:ring-blue-500" />
+                    </div>
+                  </div>
                 </div>
-                <div className="flex gap-4">
-                  <button type="button" onClick={() => setIsTestModalOpen(false)} className="flex-1 py-4 bg-slate-100 rounded-xl font-bold">Cancel</button>
-                  <button type="submit" className="flex-1 py-4 bg-blue-600 text-white rounded-xl font-bold">Save Test</button>
+
+                <div className="space-y-4 pt-4 border-t border-slate-100">
+                  <div className="flex justify-between items-center">
+                    <h4 className="text-sm font-black uppercase tracking-widest text-slate-900">Select Questions ({editingTest.questions.length})</h4>
+                    <div className="relative">
+                      <input 
+                        type="text" 
+                        placeholder="Search MCQs..." 
+                        value={testMcqSearch}
+                        onChange={e => setTestMcqSearch(e.target.value)}
+                        className="pl-8 pr-4 py-2 bg-slate-50 border border-slate-200 rounded-lg text-xs outline-none focus:ring-2 focus:ring-blue-500"
+                      />
+                      <Database size={14} className="absolute left-2.5 top-2.5 text-slate-400" />
+                    </div>
+                  </div>
+
+                  <div className="space-y-2 max-h-[300px] overflow-y-auto pr-2 custom-scrollbar">
+                    {isSearchingMcqs ? (
+                      <div className="py-8 flex justify-center"><RefreshCw className="animate-spin text-blue-600" /></div>
+                    ) : testMcqResults.length === 0 ? (
+                      <div className="py-8 text-center text-slate-400 text-xs font-bold uppercase tracking-widest">No matching questions found</div>
+                    ) : (
+                      testMcqResults.map(mcq => {
+                        const isSelected = editingTest.questions.includes(mcq.id);
+                        return (
+                          <div 
+                            key={mcq.id} 
+                            onClick={() => {
+                              const newQuestions = isSelected 
+                                ? editingTest.questions.filter((id: string) => id !== mcq.id)
+                                : [...editingTest.questions, mcq.id];
+                              setEditingTest({...editingTest, questions: newQuestions});
+                            }}
+                            className={`p-4 rounded-2xl border cursor-pointer transition-all flex justify-between items-center gap-4 ${
+                              isSelected ? "bg-blue-50 border-blue-200" : "bg-slate-50 border-slate-100 hover:border-slate-200"
+                            }`}
+                          >
+                            <div className="space-y-1 flex-1">
+                              <div className="flex gap-2">
+                                <span className="text-[8px] font-black uppercase text-blue-600">{mcq.topic}</span>
+                                <span className={`text-[8px] font-black uppercase ${
+                                  mcq.difficulty === "easy" ? "text-green-600" : mcq.difficulty === "medium" ? "text-orange-600" : "text-red-600"
+                                }`}>{mcq.difficulty}</span>
+                              </div>
+                              <p className="text-xs font-bold text-slate-800 line-clamp-2">{mcq.question}</p>
+                            </div>
+                            <div className={`w-6 h-6 rounded-full flex items-center justify-center border-2 transition-all ${
+                              isSelected ? "bg-blue-600 border-blue-600 text-white" : "border-slate-200"
+                            }`}>
+                              {isSelected && <CheckCircle size={14} />}
+                            </div>
+                          </div>
+                        );
+                      })
+                    )}
+                  </div>
+                </div>
+
+                <div className="flex gap-4 pt-4">
+                  <button type="button" onClick={() => setIsTestModalOpen(false)} className="flex-1 py-4 bg-slate-100 rounded-2xl font-black uppercase tracking-widest text-xs text-slate-600 hover:bg-slate-200 transition-all">Cancel</button>
+                  <button type="submit" className="flex-1 py-4 bg-blue-600 text-white rounded-2xl font-black uppercase tracking-widest text-xs hover:bg-blue-700 transition-all shadow-lg shadow-blue-100">Save Mock Test</button>
                 </div>
               </form>
             </motion.div>
