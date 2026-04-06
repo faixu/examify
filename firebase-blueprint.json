@@ -1,0 +1,59 @@
+{
+  "entities": {
+    "User": {
+      "title": "User",
+      "description": "User profile with gamification data.",
+      "type": "object",
+      "properties": {
+        "uid": { "type": "string" },
+        "displayName": { "type": "string" },
+        "email": { "type": "string" },
+        "photoURL": { "type": "string" },
+        "xp": { "type": "number" },
+        "streak": { "type": "number" },
+        "lastActive": { "type": "string", "format": "date-time" },
+        "badges": { "type": "array", "items": { "type": "string" } },
+        "rank": { "type": "string" }
+      },
+      "required": ["uid", "email"]
+    },
+    "MCQ": {
+      "title": "MCQ",
+      "description": "Multiple Choice Question.",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "category": { "type": "string" },
+        "topic": { "type": "string" },
+        "question": { "type": "string" },
+        "options": { "type": "array", "items": { "type": "string" } },
+        "answer": { "type": "string" },
+        "explanation": { "type": "string" },
+        "difficulty": { "type": "string", "enum": ["easy", "medium", "hard"] }
+      },
+      "required": ["category", "topic", "question", "options", "answer"]
+    },
+    "TestAttempt": {
+      "title": "TestAttempt",
+      "description": "A user's attempt at a test.",
+      "type": "object",
+      "properties": {
+        "userId": { "type": "string" },
+        "testId": { "type": "string" },
+        "type": { "type": "string", "enum": ["topic", "sectional", "full"] },
+        "score": { "type": "number" },
+        "totalQuestions": { "type": "number" },
+        "accuracy": { "type": "number" },
+        "timeTaken": { "type": "number" },
+        "timestamp": { "type": "string", "format": "date-time" },
+        "weakTopics": { "type": "array", "items": { "type": "string" } }
+      },
+      "required": ["userId", "score", "totalQuestions", "timestamp"]
+    }
+  },
+  "firestore": {
+    "/users/{userId}": { "schema": "User", "description": "User profiles." },
+    "/mcqs/{mcqId}": { "schema": "MCQ", "description": "Question bank." },
+    "/attempts/{attemptId}": { "schema": "TestAttempt", "description": "User test attempts." }
+  }
+}

@@ -1,0 +1,109 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    // ===============================================================
+    // Assumed Data Model
+    // ===============================================================
+    //
+    // Collection: users
+    // Document ID: {userId}
+    // Fields:
+    //   - uid: string (required)
+    //   - displayName: string (optional)
+    //   - email: string (required)
+    //   - photoURL: string (optional)
+    //   - xp: number (optional)
+    //   - streak: number (optional)
+    //   - lastActive: timestamp (optional)
+    //   - badges: list (optional)
+    //   - rank: string (optional)
+    //
+    // Collection: mcqs
+    // Document ID: {mcqId}
+    // Fields:
+    //   - category: string (required)
+    //   - topic: string (required)
+    //   - question: string (required)
+    //   - options: list (required)
+    //   - answer: string (required)
+    //   - explanation: string (optional)
+    //   - difficulty: string (required)
+    //
+    // Collection: attempts
+    // Document ID: {attemptId}
+    // Fields:
+    //   - userId: string (required)
+    //   - score: number (required)
+    //   - totalQuestions: number (required)
+    //   - timestamp: timestamp (required)
+    //   - weakTopics: list (optional)
+    //
+    // ===============================================================
+
+    // ===============================================================
+    // Helper Functions
+    // ===============================================================
+    function isAuthenticated() {
+      return request.auth != null;
+    }
+    function isOwner(userId) {
+      return isAuthenticated() && request.auth.uid == userId;
+    }
+    function isAdmin() {
+      return isAuthenticated() && 
+        (get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'admin' ||
+         (request.auth.token.email == "Flust786@gmail.com" && request.auth.token.email_verified == true));
+    }
+    function isValidEmail(email) {
+      return email is string && email.matches("^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\\.[a-zA-Z]{2,}$");
+    }
+    function hasRequiredFields(fields) {
+      return request.resource.data.keys().hasAll(fields);
+    }
+    function hasOnlyAllowedFields(fields) {
+      return request.resource.data.keys().hasOnly(fields);
+    }
+
+    // ===============================================================
+    // Domain Validators
+    // ===============================================================
+    function isValidUser(data) {
+      return hasRequiredFields(['uid', 'email']) &&
+             data.uid == request.auth.uid &&
+             isValidEmail(data.email) &&
+             (!('xp' in data) || data.xp is number) &&
+             (!('streak' in data) || data.streak is number);
+    }
+    function isValidMCQ(data) {
+      return hasRequiredFields(['category', 'topic', 'question', 'options', 'answer', 'difficulty']) &&
+             data.options is list && data.options.size() == 4 &&
+             data.difficulty in ['easy', 'medium', 'hard'];
+    }
+    function isValidAttempt(data) {
+      return hasRequiredFields(['userId', 'score', 'totalQuestions', 'timestamp']) &&
+             data.userId == request.auth.uid &&
+             data.score is number &&
+             data.timestamp is timestamp;
+    }
+
+    // ===============================================================
+    // Rules
+    // ===============================================================
+    match /users/{userId} {
+      allow read: if isOwner(userId) || isAdmin();
+      allow create: if isOwner(userId) && isValidUser(request.resource.data) && (!('role' in request.resource.data) || isAdmin());
+      allow update: if isOwner(userId) && isValidUser(request.resource.data) && (request.resource.data.role == resource.data.role || isAdmin());
+    }
+
+    match /mcqs/{mcqId} {
+      allow read: if true; // Publicly readable for practice
+      allow write: if isAdmin();
+    }
+
+    match /attempts/{attemptId} {
+      allow read: if isAuthenticated() && (resource.data.userId == request.auth.uid || isAdmin());
+      allow create: if isAuthenticated() && isValidAttempt(request.resource.data);
+      allow update, delete: if isAdmin();
+    }
+  }
+}
