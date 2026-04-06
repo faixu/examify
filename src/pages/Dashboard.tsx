@@ -2,10 +2,9 @@ import { UserProfile, TestAttempt } from "../types";
 import { useEffect, useState } from "react";
 import { db, collection, query, where, getDocs, orderBy, limit, addDoc, deleteDoc } from "../firebase";
 import { motion } from "motion/react";
-import { Trophy, Zap, Target, Clock, TrendingUp, AlertCircle, ChevronRight, BookOpen, Star, Calendar, Database, Trash2 } from "lucide-react";
+import { Trophy, Zap, Target, Clock, TrendingUp, AlertCircle, ChevronRight, BookOpen, Star, Calendar, Database } from "lucide-react";
 import { Link } from "react-router-dom";
 import { format } from "date-fns";
-import { generateMCQs } from "../lib/geminiService";
 import { CATEGORIES } from "../constants";
 
 interface DashboardProps {
@@ -54,45 +53,6 @@ export default function Dashboard({ user }: DashboardProps) {
   const totalTests = attempts.length;
 
   const isAdmin = user?.email === "Flust786@gmail.com";
-
-  const handleSeedData = async () => {
-    if (!isAdmin) return;
-    setLoading(true);
-    try {
-      for (const cat of CATEGORIES.slice(0, 3)) {
-        for (const topic of cat.topics.slice(0, 3)) {
-          const mcqs = await generateMCQs(cat.id, topic.id, 5);
-          for (const mcq of mcqs) {
-            await addDoc(collection(db, "mcqs"), mcq);
-          }
-        }
-      }
-      alert("Sample MCQs generated successfully for 3 categories and their topics!");
-    } catch (error) {
-      console.error("Seed failed", error);
-      alert("Failed to generate MCQs.");
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  const handleClearData = async () => {
-    if (!isAdmin) return;
-    if (!window.confirm("Are you sure you want to delete ALL MCQs from the database?")) return;
-    
-    setLoading(true);
-    try {
-      const querySnapshot = await getDocs(collection(db, "mcqs"));
-      const deletePromises = querySnapshot.docs.map(doc => deleteDoc(doc.ref));
-      await Promise.all(deletePromises);
-      alert("Database cleared successfully!");
-    } catch (error) {
-      console.error("Clear failed", error);
-      alert("Failed to clear database.");
-    } finally {
-      setLoading(false);
-    }
-  };
 
   return (
     <motion.div
@@ -274,7 +234,7 @@ export default function Dashboard({ user }: DashboardProps) {
           </div>
         </div>
       </div>
-      {/* Admin Tools Section */}
+      {/* Admin Quick Link */}
       {isAdmin && (
         <motion.div
           initial={{ opacity: 0, y: 20 }}
@@ -283,64 +243,21 @@ export default function Dashboard({ user }: DashboardProps) {
         >
           <div className="absolute top-0 right-0 w-64 h-64 bg-blue-600 rounded-full blur-[120px] opacity-20 -translate-y-1/2 translate-x-1/2" />
           
-          <div className="relative z-10 space-y-8">
-            <div className="flex flex-col md:flex-row items-center justify-between gap-6">
-              <div className="space-y-2 text-center md:text-left">
-                <div className="inline-flex items-center gap-2 px-4 py-2 bg-blue-600/20 text-blue-400 rounded-full text-xs font-black uppercase tracking-widest border border-blue-500/30">
-                  <Database size={14} />
-                  <span>Admin Panel</span>
-                </div>
-                <h2 className="text-3xl font-black">AI Content Seeding</h2>
-                <p className="text-slate-400 max-w-xl">
-                  Generate high-quality MCQs using Gemini AI for all exam categories and topics. 
-                  This will automatically populate the database with sample questions.
-                </p>
-              </div>
-              
-              <div className="flex flex-col sm:flex-row gap-4 w-full md:w-auto">
-                <button
-                  onClick={handleSeedData}
-                  disabled={loading}
-                  className="bg-blue-600 text-white px-8 py-4 rounded-2xl font-black text-base hover:bg-blue-700 transition-all shadow-xl shadow-blue-900/20 active:scale-95 disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-3"
-                >
-                  {loading ? (
-                    <>
-                      <div className="w-5 h-5 border-2 border-white/30 border-t-white rounded-full animate-spin" />
-                      <span>Processing...</span>
-                    </>
-                  ) : (
-                    <>
-                      <Zap size={20} />
-                      <span>Seed with Gemini</span>
-                    </>
-                  )}
-                </button>
-                
-                <button
-                  onClick={handleClearData}
-                  disabled={loading}
-                  className="bg-slate-800 text-white px-8 py-4 rounded-2xl font-black text-base hover:bg-red-600 transition-all border border-slate-700 active:scale-95 disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-3"
-                >
-                  <Trash2 size={20} />
-                  <span>Clear Database</span>
-                </button>
-              </div>
+          <div className="relative z-10 flex flex-col md:flex-row items-center justify-between gap-6">
+            <div className="space-y-2 text-center md:text-left">
+              <h2 className="text-3xl font-black">Administrator Access</h2>
+              <p className="text-slate-400 max-w-xl">
+                You have access to the dedicated Admin Dashboard for managing AI content seeding and system maintenance.
+              </p>
             </div>
-
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-6 pt-4">
-              <div className="p-6 bg-slate-800/50 rounded-2xl border border-slate-700/50 space-y-2">
-                <div className="text-blue-400 font-black uppercase tracking-widest text-[10px]">Status</div>
-                <div className="text-lg font-bold">System Ready</div>
-              </div>
-              <div className="p-6 bg-slate-800/50 rounded-2xl border border-slate-700/50 space-y-2">
-                <div className="text-purple-400 font-black uppercase tracking-widest text-[10px]">AI Model</div>
-                <div className="text-lg font-bold">Gemini 3 Flash</div>
-              </div>
-              <div className="p-6 bg-slate-800/50 rounded-2xl border border-slate-700/50 space-y-2">
-                <div className="text-green-400 font-black uppercase tracking-widest text-[10px]">Database</div>
-                <div className="text-lg font-bold">Firestore Active</div>
-              </div>
-            </div>
+            
+            <Link
+              to="/admin"
+              className="bg-blue-600 text-white px-8 py-4 rounded-2xl font-black text-base hover:bg-blue-700 transition-all shadow-xl shadow-blue-900/20 active:scale-95 flex items-center justify-center gap-3"
+            >
+              <Database size={20} />
+              <span>Go to Admin Dashboard</span>
+            </Link>
           </div>
         </motion.div>
       )}

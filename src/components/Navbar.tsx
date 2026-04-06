@@ -1,7 +1,7 @@
 import { Link, useNavigate } from "react-router-dom";
 import { auth, googleProvider, signInWithPopup, signOut } from "../firebase";
 import { UserProfile } from "../types";
-import { Menu, X, LogIn, LogOut, User, Trophy, BookOpen, LayoutDashboard } from "lucide-react";
+import { Menu, X, LogIn, LogOut, User, Trophy, BookOpen, LayoutDashboard, Database } from "lucide-react";
 import { useState } from "react";
 import { motion, AnimatePresence } from "motion/react";
 
@@ -39,6 +39,9 @@ export default function Navbar({ user }: NavbarProps) {
 
   if (user) {
     navLinks.push({ name: "Dashboard", path: "/dashboard", icon: LayoutDashboard });
+    if (user.email === "Flust786@gmail.com") {
+      navLinks.push({ name: "Admin", path: "/admin", icon: Database });
+    }
   }
 
   return (
