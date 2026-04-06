@@ -113,6 +113,10 @@ export default function Admin({ user }: AdminProps) {
   }, [testMcqSearch, editingTest?.category, isTestModalOpen]);
 
   const handleGenerateAiMockTest = async () => {
+    if (window.aistudio && !(await window.aistudio.hasSelectedApiKey())) {
+      await window.aistudio.openSelectKey();
+    }
+
     setLoading(true);
     stopSeedingRef.current = false;
     addLog(`Starting AI Mock Test Generation: ${aiTestConfig.title}`, "info");
@@ -135,23 +139,32 @@ export default function Admin({ user }: AdminProps) {
           const countToGen = Math.min(questionsPerTopic, aiTestConfig.questionsPerCategory - catGenerated);
           setSeedingStatus(`Generating ${topic.name} (${countToGen} questions)...`);
           
-          const generated = await generateMCQs(cat.id, topic.id, countToGen, aiTestConfig.difficulty);
-          const batch = writeBatch(db);
-          const newIds: string[] = [];
-          
-          generated.forEach(g => {
-            const newDocRef = doc(collection(db, "mcqs"));
-            batch.set(newDocRef, g);
-            newIds.push(newDocRef.id);
-          });
-          
-          await batch.commit();
-          allMcqIds.push(...newIds);
-          catGenerated += generated.length;
-          totalGenerated += generated.length;
-          
-          addLog(`Seeded ${generated.length} questions for ${topic.name}`, "success");
-          await new Promise(r => setTimeout(r, 800));
+          try {
+            const generated = await generateMCQs(cat.id, topic.id, countToGen, aiTestConfig.difficulty);
+            const batch = writeBatch(db);
+            const newIds: string[] = [];
+            
+            generated.forEach(g => {
+              const newDocRef = doc(collection(db, "mcqs"));
+              batch.set(newDocRef, g);
+              newIds.push(newDocRef.id);
+            });
+            
+            await batch.commit();
+            allMcqIds.push(...newIds);
+            catGenerated += generated.length;
+            totalGenerated += generated.length;
+            
+            addLog(`Seeded ${generated.length} questions for ${topic.name}`, "success");
+            await new Promise(r => setTimeout(r, 800));
+          } catch (error: any) {
+            if (error.message.includes("quota") || error.message.includes("limit")) {
+              addLog("API Quota exceeded. Please select a valid paid API key.", "error");
+              if (window.aistudio) await window.aistudio.openSelectKey();
+              break;
+            }
+            throw error;
+          }
         }
       }
 
@@ -308,6 +321,9 @@ export default function Admin({ user }: AdminProps) {
 
   const handleSeedData = async () => {
     if (!isAdmin) return;
+    if (window.aistudio && !(await window.aistudio.hasSelectedApiKey())) {
+      await window.aistudio.openSelectKey();
+    }
     setLoading(true);
     stopSeedingRef.current = false;
     setSeedingStatus("Initializing AI Content Engine...");
@@ -367,6 +383,11 @@ export default function Admin({ user }: AdminProps) {
             await new Promise(r => setTimeout(r, 1000));
             
           } catch (e: any) {
+            if (e.message.includes("quota") || e.message.includes("limit")) {
+              addLog("API Quota exceeded. Please select a valid paid API key.", "error");
+              if (window.aistudio) await window.aistudio.openSelectKey();
+              break;
+            }
             addLog(`Error in ${topic.name}: ${e.message}`, "error");
             console.error(`Failed to generate for ${topic.name}`, e);
           }
@@ -496,38 +517,38 @@ export default function Admin({ user }: AdminProps) {
         {/* Main Content Area */}
         <div className="lg:col-span-2 space-y-8">
           {activeTab === "ai-generator" && (
-            <div className="bg-slate-900 rounded-[2.5rem] p-8 md:p-12 text-white relative overflow-hidden border border-slate-800">
+            <div className="bg-slate-900 rounded-3xl p-6 md:p-8 text-white relative overflow-hidden border border-slate-800">
               <div className="absolute top-0 right-0 w-64 h-64 bg-blue-600 rounded-full blur-[120px] opacity-20 -translate-y-1/2 translate-x-1/2" />
               
-              <div className="relative z-10 space-y-8">
-                <div className="space-y-4">
-                  <div className="inline-flex items-center gap-2 px-4 py-2 bg-blue-600/20 text-blue-400 rounded-full text-xs font-black uppercase tracking-widest border border-blue-500/30">
-                    <Zap size={14} />
+              <div className="relative z-10 space-y-6">
+                <div className="space-y-3">
+                  <div className="inline-flex items-center gap-2 px-3 py-1.5 bg-blue-600/20 text-blue-400 rounded-full text-[10px] font-black uppercase tracking-widest border border-blue-500/30">
+                    <Zap size={12} />
                     <span>AI Content Engine</span>
                   </div>
-                  <h2 className="text-3xl font-black">AI Mock Test Generator</h2>
-                  <p className="text-slate-400">
+                  <h2 className="text-2xl font-black">AI Mock Test Generator</h2>
+                  <p className="text-slate-400 text-sm">
                     Generate a full-syllabus mock test automatically. Configure the parameters below and let Gemini AI build the content.
                   </p>
                 </div>
 
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                  <div className="space-y-2">
-                    <label className="text-xs font-black uppercase tracking-widest text-slate-400">Test Title</label>
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  <div className="space-y-1.5">
+                    <label className="text-[10px] font-black uppercase tracking-widest text-slate-400">Test Title</label>
                     <input 
                       type="text"
                       value={aiTestConfig.title}
                       onChange={(e) => setAiTestConfig({...aiTestConfig, title: e.target.value})}
-                      className="w-full bg-slate-800 border border-slate-700 rounded-xl px-4 py-3 text-white focus:ring-2 focus:ring-blue-500 outline-none"
+                      className="w-full bg-slate-800 border border-slate-700 rounded-xl px-4 py-2.5 text-sm text-white focus:ring-2 focus:ring-blue-500 outline-none"
                       placeholder="e.g. Full Mock Test #1"
                     />
                   </div>
-                  <div className="space-y-2">
-                    <label className="text-xs font-black uppercase tracking-widest text-slate-400">Difficulty</label>
+                  <div className="space-y-1.5">
+                    <label className="text-[10px] font-black uppercase tracking-widest text-slate-400">Difficulty</label>
                     <select 
                       value={aiTestConfig.difficulty}
                       onChange={(e) => setAiTestConfig({...aiTestConfig, difficulty: e.target.value})}
-                      className="w-full bg-slate-800 border border-slate-700 rounded-xl px-4 py-3 text-white focus:ring-2 focus:ring-blue-500 outline-none"
+                      className="w-full bg-slate-800 border border-slate-700 rounded-xl px-4 py-2.5 text-sm text-white focus:ring-2 focus:ring-blue-500 outline-none"
                     >
                       <option value="mixed">Mixed</option>
                       <option value="easy">Easy</option>
@@ -537,64 +558,64 @@ export default function Admin({ user }: AdminProps) {
                   </div>
                 </div>
 
-                <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-                  <div className="space-y-2">
-                    <label className="text-xs font-black uppercase tracking-widest text-slate-400">Questions per Section</label>
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                  <div className="space-y-1.5">
+                    <label className="text-[10px] font-black uppercase tracking-widest text-slate-400">Questions per Section</label>
                     <input 
                       type="number"
                       value={aiTestConfig.questionsPerCategory}
                       onChange={(e) => setAiTestConfig({...aiTestConfig, questionsPerCategory: parseInt(e.target.value) || 0})}
-                      className="w-full bg-slate-800 border border-slate-700 rounded-xl px-4 py-3 text-white focus:ring-2 focus:ring-blue-500 outline-none"
+                      className="w-full bg-slate-800 border border-slate-700 rounded-xl px-4 py-2.5 text-sm text-white focus:ring-2 focus:ring-blue-500 outline-none"
                     />
                   </div>
-                  <div className="space-y-2">
-                    <label className="text-xs font-black uppercase tracking-widest text-slate-400">Duration (Mins)</label>
+                  <div className="space-y-1.5">
+                    <label className="text-[10px] font-black uppercase tracking-widest text-slate-400">Duration (Mins)</label>
                     <input 
                       type="number"
                       value={aiTestConfig.duration}
                       onChange={(e) => setAiTestConfig({...aiTestConfig, duration: parseInt(e.target.value) || 0})}
-                      className="w-full bg-slate-800 border border-slate-700 rounded-xl px-4 py-3 text-white focus:ring-2 focus:ring-blue-500 outline-none"
+                      className="w-full bg-slate-800 border border-slate-700 rounded-xl px-4 py-2.5 text-sm text-white focus:ring-2 focus:ring-blue-500 outline-none"
                     />
                   </div>
-                  <div className="space-y-2">
-                    <label className="text-xs font-black uppercase tracking-widest text-slate-400">Total Marks</label>
+                  <div className="space-y-1.5">
+                    <label className="text-[10px] font-black uppercase tracking-widest text-slate-400">Total Marks</label>
                     <input 
                       type="number"
                       value={aiTestConfig.totalMarks}
                       onChange={(e) => setAiTestConfig({...aiTestConfig, totalMarks: parseInt(e.target.value) || 0})}
-                      className="w-full bg-slate-800 border border-slate-700 rounded-xl px-4 py-3 text-white focus:ring-2 focus:ring-blue-500 outline-none"
+                      className="w-full bg-slate-800 border border-slate-700 rounded-xl px-4 py-2.5 text-sm text-white focus:ring-2 focus:ring-blue-500 outline-none"
                     />
                   </div>
                 </div>
 
-                <div className="p-4 bg-slate-800/50 rounded-2xl border border-slate-700 flex justify-between items-center">
-                  <span className="text-xs font-black text-slate-400 uppercase">Estimated Total Questions:</span>
-                  <span className="text-xl font-black text-blue-400">{aiTestConfig.questionsPerCategory * CATEGORIES.length}</span>
+                <div className="p-3 bg-slate-800/50 rounded-xl border border-slate-700 flex justify-between items-center">
+                  <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Estimated Total Questions:</span>
+                  <span className="text-lg font-black text-blue-400">{aiTestConfig.questionsPerCategory * CATEGORIES.length}</span>
                 </div>
 
-                <div className="flex flex-col gap-4">
+                <div className="flex flex-col gap-3">
                   {!loading ? (
                     <button
                       onClick={handleGenerateAiMockTest}
-                      className="w-full bg-blue-600 text-white px-8 py-5 rounded-2xl font-black text-lg hover:bg-blue-700 transition-all shadow-xl shadow-blue-900/20 active:scale-95 flex items-center justify-center gap-3"
+                      className="w-full bg-blue-600 text-white px-6 py-4 rounded-xl font-black text-base hover:bg-blue-700 transition-all shadow-xl shadow-blue-900/20 active:scale-95 flex items-center justify-center gap-3"
                     >
-                      <Zap size={20} />
+                      <Zap size={18} />
                       <span>Generate Full Mock Test</span>
                     </button>
                   ) : (
-                    <div className="flex gap-4">
-                      <div className="flex-1 bg-slate-800 text-blue-400 px-8 py-5 rounded-2xl font-black text-lg flex items-center justify-center gap-3 border border-blue-500/30">
-                        <RefreshCw size={20} className="animate-spin" />
-                        <span>{seedingStatus || "Processing..."}</span>
+                    <div className="flex gap-3">
+                      <div className="flex-1 bg-slate-800 text-blue-400 px-6 py-4 rounded-xl font-black text-base flex items-center justify-center gap-3 border border-blue-500/30">
+                        <RefreshCw size={18} className="animate-spin" />
+                        <span className="truncate">{seedingStatus || "Processing..."}</span>
                       </div>
                       <button
                         onClick={() => {
                           stopSeedingRef.current = true;
                           addLog("Stopping process...", "warning");
                         }}
-                        className="bg-red-600 text-white px-6 py-5 rounded-2xl font-black hover:bg-red-700 transition-all active:scale-95 flex items-center gap-2"
+                        className="bg-red-600 text-white px-5 py-4 rounded-xl font-black hover:bg-red-700 transition-all active:scale-95 flex items-center gap-2"
                       >
-                        <StopCircle size={20} />
+                        <StopCircle size={18} />
                         Stop
                       </button>
                     </div>
@@ -605,34 +626,34 @@ export default function Admin({ user }: AdminProps) {
           )}
 
           {activeTab === "mock-tests" && (
-            <div className="bg-white p-8 rounded-[2.5rem] border border-slate-100 shadow-sm space-y-6">
+            <div className="bg-white p-6 rounded-3xl border border-slate-100 shadow-sm space-y-4">
               <div className="flex justify-between items-center">
-                <h2 className="text-2xl font-black text-slate-900">Mock Test Management</h2>
+                <h2 className="text-xl font-black text-slate-900">Mock Test Management</h2>
                 <button 
                   onClick={() => {
                     setEditingTest({ title: "", description: "", category: CATEGORIES[0].id, type: "full", duration: 60, totalMarks: 100, questions: [] });
                     setIsTestModalOpen(true);
                   }}
-                  className="p-3 bg-blue-600 text-white rounded-xl hover:bg-blue-700 transition-all"
+                  className="p-2.5 bg-blue-600 text-white rounded-xl hover:bg-blue-700 transition-all"
                 >
-                  <Plus />
+                  <Plus size={20} />
                 </button>
               </div>
 
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
                 {mockTests.map(test => (
-                  <div key={test.id} className="p-6 bg-slate-50 rounded-3xl border border-slate-100 space-y-4 group">
+                  <div key={test.id} className="p-5 bg-slate-50 rounded-2xl border border-slate-100 space-y-3 group">
                     <div className="flex justify-between items-start">
                       <div className="space-y-1">
-                        <span className="px-2 py-1 bg-blue-100 text-blue-700 rounded-lg text-[10px] font-black uppercase tracking-widest">{test.type}</span>
-                        <h3 className="text-lg font-black text-slate-900">{test.title}</h3>
+                        <span className="px-2 py-0.5 bg-blue-100 text-blue-700 rounded-md text-[9px] font-black uppercase tracking-widest">{test.type}</span>
+                        <h3 className="text-base font-black text-slate-900 line-clamp-1">{test.title}</h3>
                       </div>
-                      <div className="flex gap-2 opacity-0 group-hover:opacity-100 transition-all">
-                        <button onClick={() => { setEditingTest(test); setIsTestModalOpen(true); }} className="p-2 text-blue-600 hover:bg-blue-100 rounded-lg"><RefreshCw size={16} /></button>
-                        <button onClick={async () => { if(confirm("Delete?")) { await deleteDoc(doc(db, "mockTests", test.id!)); fetchMockTests(); } }} className="p-2 text-red-600 hover:bg-red-100 rounded-lg"><Trash2 size={16} /></button>
+                      <div className="flex gap-1.5 opacity-0 group-hover:opacity-100 transition-all">
+                        <button onClick={() => { setEditingTest(test); setIsTestModalOpen(true); }} className="p-1.5 text-blue-600 hover:bg-blue-100 rounded-lg"><RefreshCw size={14} /></button>
+                        <button onClick={async () => { if(confirm("Delete?")) { await deleteDoc(doc(db, "mockTests", test.id!)); fetchMockTests(); } }} className="p-1.5 text-red-600 hover:bg-red-100 rounded-lg"><Trash2 size={14} /></button>
                       </div>
                     </div>
-                    <div className="flex justify-between text-xs font-bold text-slate-500">
+                    <div className="flex justify-between text-[10px] font-bold text-slate-500 uppercase tracking-widest">
                       <span>{test.questions.length} Questions</span>
                       <span>{test.duration} Mins</span>
                     </div>
@@ -643,25 +664,25 @@ export default function Admin({ user }: AdminProps) {
           )}
 
           {activeTab === "questions" && (
-            <div className="space-y-6">
-              <div className="bg-white p-8 rounded-[2.5rem] border border-slate-100 shadow-sm space-y-6">
-                <div className="flex flex-col md:flex-row gap-4 items-end">
-                  <div className="flex-1 space-y-2">
-                    <label className="text-xs font-black uppercase tracking-widest text-slate-400">Search Questions</label>
+            <div className="space-y-4">
+              <div className="bg-white p-6 rounded-3xl border border-slate-100 shadow-sm space-y-4">
+                <div className="flex flex-col md:flex-row gap-3 items-end">
+                  <div className="flex-1 space-y-1.5">
+                    <label className="text-[10px] font-black uppercase tracking-widest text-slate-400">Search Questions</label>
                     <input 
                       type="text"
                       placeholder="Search by text..."
                       value={manageSearch}
                       onChange={(e) => setManageSearch(e.target.value)}
-                      className="w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-3 focus:ring-2 focus:ring-blue-500 outline-none"
+                      className="w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-2.5 text-sm focus:ring-2 focus:ring-blue-500 outline-none"
                     />
                   </div>
-                  <div className="w-full md:w-48 space-y-2">
-                    <label className="text-xs font-black uppercase tracking-widest text-slate-400">Category</label>
+                  <div className="w-full md:w-40 space-y-1.5">
+                    <label className="text-[10px] font-black uppercase tracking-widest text-slate-400">Category</label>
                     <select 
                       value={manageCategory}
                       onChange={(e) => setManageCategory(e.target.value)}
-                      className="w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-3 focus:ring-2 focus:ring-blue-500 outline-none"
+                      className="w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-2.5 text-sm focus:ring-2 focus:ring-blue-500 outline-none"
                     >
                       <option value="all">All</option>
                       {CATEGORIES.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
@@ -680,50 +701,50 @@ export default function Admin({ user }: AdminProps) {
                       });
                       setIsEditing(true);
                     }}
-                    className="bg-blue-600 text-white p-4 rounded-xl hover:bg-blue-700 transition-all"
+                    className="bg-blue-600 text-white p-3 rounded-xl hover:bg-blue-700 transition-all"
                   >
-                    <Plus size={24} />
+                    <Plus size={20} />
                   </button>
                 </div>
 
-                <div className="space-y-4">
+                <div className="space-y-3">
                   {manageQuestions.length === 0 ? (
-                    <div className="py-12 text-center text-slate-400">
-                      <p className="font-bold uppercase tracking-widest text-xs">No questions found</p>
+                    <div className="py-8 text-center text-slate-400">
+                      <p className="font-bold uppercase tracking-widest text-[10px]">No questions found</p>
                     </div>
                   ) : (
                     manageQuestions.map((q) => (
-                      <div key={q.id} className="p-6 bg-slate-50 rounded-3xl border border-slate-100 flex items-start justify-between gap-4 group">
-                        <div className="space-y-2 flex-1">
+                      <div key={q.id} className="p-4 bg-slate-50 rounded-2xl border border-slate-100 flex items-start justify-between gap-3 group">
+                        <div className="space-y-1.5 flex-1">
                           <div className="flex items-center gap-2">
-                            <span className={`px-2 py-0.5 rounded-md text-[10px] font-black uppercase tracking-widest ${
+                            <span className={`px-2 py-0.5 rounded-md text-[9px] font-black uppercase tracking-widest ${
                               q.difficulty === "easy" ? "bg-green-100 text-green-700" :
                               q.difficulty === "medium" ? "bg-blue-100 text-blue-700" :
                               "bg-red-100 text-red-700"
                             }`}>
                               {q.difficulty}
                             </span>
-                            <span className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">
+                            <span className="text-[9px] font-bold text-slate-400 uppercase tracking-widest">
                               {q.category} / {q.topic}
                             </span>
                           </div>
-                          <p className="text-sm font-bold text-slate-900 line-clamp-2">{q.question}</p>
+                          <p className="text-sm font-bold text-slate-900 line-clamp-1">{q.question}</p>
                         </div>
-                        <div className="flex gap-2 opacity-0 group-hover:opacity-100 transition-opacity">
+                        <div className="flex gap-1.5 opacity-0 group-hover:opacity-100 transition-opacity">
                           <button 
                             onClick={() => {
                               setEditingQuestion(q);
                               setIsEditing(true);
                             }}
-                            className="p-2 text-blue-600 hover:bg-blue-50 rounded-lg transition-all"
+                            className="p-1.5 text-blue-600 hover:bg-blue-50 rounded-lg transition-all"
                           >
-                            <RefreshCw size={18} />
+                            <RefreshCw size={14} />
                           </button>
                           <button 
                             onClick={() => handleDeleteQuestion(q.id!)}
-                            className="p-2 text-red-600 hover:bg-red-50 rounded-lg transition-all"
+                            className="p-1.5 text-red-600 hover:bg-red-50 rounded-lg transition-all"
                           >
-                            <Trash2 size={18} />
+                            <Trash2 size={14} />
                           </button>
                         </div>
                       </div>
@@ -831,66 +852,66 @@ export default function Admin({ user }: AdminProps) {
         {isTestModalOpen && (
           <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-sm">
             <motion.div initial={{ opacity: 0, scale: 0.95 }} animate={{ opacity: 1, scale: 1 }} exit={{ opacity: 0, scale: 0.95 }} className="bg-white rounded-[2.5rem] w-full max-w-4xl max-h-[90vh] overflow-hidden shadow-2xl flex flex-col">
-              <div className="p-8 border-b border-slate-100 flex justify-between items-center bg-slate-50/50">
+              <div className="p-6 md:p-8 border-b border-slate-100 flex justify-between items-center bg-slate-50/50">
                 <div>
-                  <h2 className="text-2xl font-black text-slate-900">{editingTest?.id ? "Edit Mock Test" : "Create Mock Test"}</h2>
-                  <p className="text-slate-500 text-sm font-bold">Configure test details and select questions</p>
+                  <h2 className="text-xl md:text-2xl font-black text-slate-900">{editingTest?.id ? "Edit Mock Test" : "Create Mock Test"}</h2>
+                  <p className="text-slate-500 text-xs md:sm font-bold">Configure test details and select questions</p>
                 </div>
                 <button onClick={() => setIsTestModalOpen(false)} className="p-2 hover:bg-slate-200 rounded-full transition-all"><XCircle size={24} className="text-slate-400" /></button>
               </div>
 
-              <div className="flex-1 overflow-y-auto p-8 space-y-8">
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                  <div className="space-y-2">
-                    <label className="text-xs font-black uppercase tracking-widest text-slate-400">Test Title</label>
-                    <input type="text" value={editingTest?.title} onChange={e => setEditingTest({...editingTest, title: e.target.value})} className="w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-3 focus:ring-2 focus:ring-blue-500 outline-none" />
+              <div className="flex-1 overflow-y-auto p-6 md:p-8 space-y-6 md:space-y-8 custom-scrollbar">
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4 md:gap-6">
+                  <div className="space-y-1.5">
+                    <label className="text-[10px] font-black uppercase tracking-widest text-slate-400 ml-1">Test Title</label>
+                    <input type="text" value={editingTest?.title} onChange={e => setEditingTest({...editingTest, title: e.target.value})} className="w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-2.5 text-sm focus:ring-2 focus:ring-blue-500 outline-none" />
                   </div>
-                  <div className="space-y-2">
-                    <label className="text-xs font-black uppercase tracking-widest text-slate-400">Category</label>
-                    <select value={editingTest?.category} onChange={e => setEditingTest({...editingTest, category: e.target.value})} className="w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-3 focus:ring-2 focus:ring-blue-500 outline-none">
+                  <div className="space-y-1.5">
+                    <label className="text-[10px] font-black uppercase tracking-widest text-slate-400 ml-1">Category</label>
+                    <select value={editingTest?.category} onChange={e => setEditingTest({...editingTest, category: e.target.value})} className="w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-2.5 text-sm focus:ring-2 focus:ring-blue-500 outline-none">
                       <option value="all">All Sections (Full Mock)</option>
                       {CATEGORIES.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
                     </select>
                   </div>
                 </div>
 
-                <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-                  <div className="space-y-2">
-                    <label className="text-xs font-black uppercase tracking-widest text-slate-400">Type</label>
-                    <select value={editingTest?.type} onChange={e => setEditingTest({...editingTest, type: e.target.value})} className="w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-3 focus:ring-2 focus:ring-blue-500 outline-none">
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-4 md:gap-6">
+                  <div className="space-y-1.5">
+                    <label className="text-[10px] font-black uppercase tracking-widest text-slate-400 ml-1">Type</label>
+                    <select value={editingTest?.type} onChange={e => setEditingTest({...editingTest, type: e.target.value})} className="w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-2.5 text-sm focus:ring-2 focus:ring-blue-500 outline-none">
                       <option value="full">Full Mock</option>
                       <option value="sectional">Sectional</option>
                       <option value="topic">Topic-wise</option>
                     </select>
                   </div>
-                  <div className="space-y-2">
-                    <label className="text-xs font-black uppercase tracking-widest text-slate-400">Duration (Mins)</label>
-                    <input type="number" value={editingTest?.duration} onChange={e => setEditingTest({...editingTest, duration: parseInt(e.target.value) || 0})} className="w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-3 focus:ring-2 focus:ring-blue-500 outline-none" />
+                  <div className="space-y-1.5">
+                    <label className="text-[10px] font-black uppercase tracking-widest text-slate-400 ml-1">Duration (Mins)</label>
+                    <input type="number" value={editingTest?.duration} onChange={e => setEditingTest({...editingTest, duration: parseInt(e.target.value) || 0})} className="w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-2.5 text-sm focus:ring-2 focus:ring-blue-500 outline-none" />
                   </div>
-                  <div className="space-y-2">
-                    <label className="text-xs font-black uppercase tracking-widest text-slate-400">Total Marks</label>
-                    <input type="number" value={editingTest?.totalMarks} onChange={e => setEditingTest({...editingTest, totalMarks: parseInt(e.target.value) || 0})} className="w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-3 focus:ring-2 focus:ring-blue-500 outline-none" />
+                  <div className="space-y-1.5">
+                    <label className="text-[10px] font-black uppercase tracking-widest text-slate-400 ml-1">Total Marks</label>
+                    <input type="number" value={editingTest?.totalMarks} onChange={e => setEditingTest({...editingTest, totalMarks: parseInt(e.target.value) || 0})} className="w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-2.5 text-sm focus:ring-2 focus:ring-blue-500 outline-none" />
                   </div>
                 </div>
 
                 <div className="space-y-4">
                   <div className="flex justify-between items-end">
-                    <div className="flex-1 space-y-2">
-                      <label className="text-xs font-black uppercase tracking-widest text-slate-400">Select Questions ({editingTest?.questions?.length || 0} selected)</label>
+                    <div className="flex-1 space-y-1.5">
+                      <label className="text-[10px] font-black uppercase tracking-widest text-slate-400 ml-1">Select Questions ({editingTest?.questions?.length || 0} selected)</label>
                       <div className="relative">
                         <input 
                           type="text" 
                           placeholder="Search questions to add..." 
                           value={testMcqSearch}
                           onChange={e => setTestMcqSearch(e.target.value)}
-                          className="w-full bg-slate-50 border border-slate-200 rounded-xl pl-10 pr-4 py-3 focus:ring-2 focus:ring-blue-500 outline-none"
+                          className="w-full bg-slate-50 border border-slate-200 rounded-xl pl-10 pr-4 py-2.5 text-sm focus:ring-2 focus:ring-blue-500 outline-none"
                         />
-                        <Database className="absolute left-3 top-3.5 text-slate-400" size={18} />
+                        <Database className="absolute left-3 top-3 text-slate-400" size={16} />
                       </div>
                     </div>
                   </div>
 
-                  <div className="grid grid-cols-1 gap-2 max-h-64 overflow-y-auto p-2 bg-slate-50 rounded-2xl border border-slate-100">
+                  <div className="grid grid-cols-1 gap-2 max-h-64 overflow-y-auto p-2 bg-slate-50 rounded-2xl border border-slate-100 custom-scrollbar">
                     {isSearchingMcqs ? (
                       <div className="p-8 text-center text-slate-400 animate-pulse font-bold uppercase tracking-widest text-xs">Searching database...</div>
                     ) : testMcqResults.length === 0 ? (
@@ -951,8 +972,8 @@ export default function Admin({ user }: AdminProps) {
               exit={{ opacity: 0, scale: 0.95, y: 20 }}
               className="relative bg-white w-full max-w-2xl rounded-[2.5rem] shadow-2xl overflow-hidden flex flex-col max-h-[90vh]"
             >
-              <div className="p-8 border-b border-slate-100 flex items-center justify-between">
-                <h3 className="text-2xl font-black text-slate-900">
+              <div className="p-6 md:p-8 border-b border-slate-100 flex items-center justify-between">
+                <h3 className="text-xl md:text-2xl font-black text-slate-900">
                   {editingQuestion?.id ? "Edit Question" : "Add Question"}
                 </h3>
                 <button 
@@ -963,24 +984,24 @@ export default function Admin({ user }: AdminProps) {
                 </button>
               </div>
 
-              <form onSubmit={handleSaveQuestion} className="p-8 overflow-y-auto space-y-6 custom-scrollbar">
+              <form onSubmit={handleSaveQuestion} className="p-6 md:p-8 overflow-y-auto space-y-4 md:space-y-6 custom-scrollbar">
                 <div className="grid grid-cols-2 gap-4">
-                  <div className="space-y-2">
-                    <label className="text-xs font-black uppercase tracking-widest text-slate-400">Category</label>
+                  <div className="space-y-1.5">
+                    <label className="text-[10px] font-black uppercase tracking-widest text-slate-400 ml-1">Category</label>
                     <select 
                       value={editingQuestion?.category}
                       onChange={(e) => setEditingQuestion({...editingQuestion, category: e.target.value})}
-                      className="w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-3 focus:ring-2 focus:ring-blue-500 outline-none"
+                      className="w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-2.5 text-sm focus:ring-2 focus:ring-blue-500 outline-none"
                     >
                       {CATEGORIES.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
                     </select>
                   </div>
-                  <div className="space-y-2">
-                    <label className="text-xs font-black uppercase tracking-widest text-slate-400">Topic</label>
+                  <div className="space-y-1.5">
+                    <label className="text-[10px] font-black uppercase tracking-widest text-slate-400 ml-1">Topic</label>
                     <select 
                       value={editingQuestion?.topic}
                       onChange={(e) => setEditingQuestion({...editingQuestion, topic: e.target.value})}
-                      className="w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-3 focus:ring-2 focus:ring-blue-500 outline-none"
+                      className="w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-2.5 text-sm focus:ring-2 focus:ring-blue-500 outline-none"
                     >
                       {CATEGORIES.find(c => c.id === editingQuestion?.category)?.topics.map(t => (
                         <option key={t.id} value={t.id}>{t.name}</option>
@@ -989,21 +1010,21 @@ export default function Admin({ user }: AdminProps) {
                   </div>
                 </div>
 
-                <div className="space-y-2">
-                  <label className="text-xs font-black uppercase tracking-widest text-slate-400">Question Text</label>
+                <div className="space-y-1.5">
+                  <label className="text-[10px] font-black uppercase tracking-widest text-slate-400 ml-1">Question Text</label>
                   <textarea 
                     value={editingQuestion?.question}
                     onChange={(e) => setEditingQuestion({...editingQuestion, question: e.target.value})}
                     rows={3}
-                    className="w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-3 focus:ring-2 focus:ring-blue-500 outline-none"
+                    className="w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-2.5 text-sm focus:ring-2 focus:ring-blue-500 outline-none"
                     required
                   />
                 </div>
 
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                   {editingQuestion?.options.map((opt: string, idx: number) => (
-                    <div key={idx} className="space-y-2">
-                      <label className="text-xs font-bold text-slate-400">Option {idx + 1}</label>
+                    <div key={idx} className="space-y-1">
+                      <label className="text-[10px] font-bold text-slate-400 ml-1">Option {idx + 1}</label>
                       <input 
                         type="text"
                         value={opt}
@@ -1012,7 +1033,7 @@ export default function Admin({ user }: AdminProps) {
                           newOpts[idx] = e.target.value;
                           setEditingQuestion({...editingQuestion, options: newOpts});
                         }}
-                        className="w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-3 focus:ring-2 focus:ring-blue-500 outline-none"
+                        className="w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-2.5 text-sm focus:ring-2 focus:ring-blue-500 outline-none"
                         required
                       />
                     </div>
@@ -1020,12 +1041,12 @@ export default function Admin({ user }: AdminProps) {
                 </div>
 
                 <div className="grid grid-cols-2 gap-4">
-                  <div className="space-y-2">
-                    <label className="text-xs font-black uppercase tracking-widest text-slate-400">Correct Answer</label>
+                  <div className="space-y-1.5">
+                    <label className="text-[10px] font-black uppercase tracking-widest text-slate-400 ml-1">Correct Answer</label>
                     <select 
                       value={editingQuestion?.answer}
                       onChange={(e) => setEditingQuestion({...editingQuestion, answer: e.target.value})}
-                      className="w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-3 focus:ring-2 focus:ring-blue-500 outline-none"
+                      className="w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-2.5 text-sm focus:ring-2 focus:ring-blue-500 outline-none"
                       required
                     >
                       <option value="">Select Answer</option>
@@ -1034,12 +1055,12 @@ export default function Admin({ user }: AdminProps) {
                       ))}
                     </select>
                   </div>
-                  <div className="space-y-2">
-                    <label className="text-xs font-black uppercase tracking-widest text-slate-400">Difficulty</label>
+                  <div className="space-y-1.5">
+                    <label className="text-[10px] font-black uppercase tracking-widest text-slate-400 ml-1">Difficulty</label>
                     <select 
                       value={editingQuestion?.difficulty}
                       onChange={(e) => setEditingQuestion({...editingQuestion, difficulty: e.target.value})}
-                      className="w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-3 focus:ring-2 focus:ring-blue-500 outline-none"
+                      className="w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-2.5 text-sm focus:ring-2 focus:ring-blue-500 outline-none"
                     >
                       <option value="easy">Easy</option>
                       <option value="medium">Medium</option>
@@ -1048,28 +1069,28 @@ export default function Admin({ user }: AdminProps) {
                   </div>
                 </div>
 
-                <div className="space-y-2">
-                  <label className="text-xs font-black uppercase tracking-widest text-slate-400">Explanation</label>
+                <div className="space-y-1.5">
+                  <label className="text-[10px] font-black uppercase tracking-widest text-slate-400 ml-1">Explanation</label>
                   <textarea 
                     value={editingQuestion?.explanation}
                     onChange={(e) => setEditingQuestion({...editingQuestion, explanation: e.target.value})}
-                    rows={3}
-                    className="w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-3 focus:ring-2 focus:ring-blue-500 outline-none"
+                    rows={2}
+                    className="w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-2.5 text-sm focus:ring-2 focus:ring-blue-500 outline-none"
                   />
                 </div>
 
-                <div className="pt-4 flex gap-4">
+                <div className="pt-2 flex gap-4">
                   <button 
                     type="button"
                     onClick={() => setIsEditing(false)}
-                    className="flex-1 py-4 bg-slate-100 text-slate-600 rounded-2xl font-black uppercase tracking-widest text-xs hover:bg-slate-200 transition-all"
+                    className="flex-1 py-3 md:py-4 bg-slate-100 text-slate-600 rounded-2xl font-black uppercase tracking-widest text-[10px] hover:bg-slate-200 transition-all"
                   >
                     Cancel
                   </button>
                   <button 
                     type="submit"
                     disabled={loading}
-                    className="flex-1 py-4 bg-blue-600 text-white rounded-2xl font-black uppercase tracking-widest text-xs hover:bg-blue-700 transition-all shadow-lg shadow-blue-200 disabled:opacity-50"
+                    className="flex-1 py-3 md:py-4 bg-blue-600 text-white rounded-2xl font-black uppercase tracking-widest text-[10px] hover:bg-blue-700 transition-all shadow-lg shadow-blue-200 disabled:opacity-50"
                   >
                     {loading ? "Saving..." : "Save Question"}
                   </button>

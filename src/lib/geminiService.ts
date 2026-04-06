@@ -1,9 +1,8 @@
 import { GoogleGenAI, Type, GenerateContentResponse } from "@google/genai";
 import { MCQ } from "../types";
 
-const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY || "" });
-
 export async function generateMCQs(category: string, topic: string, count: number = 5, difficulty: string = "mixed"): Promise<MCQ[]> {
+  const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY || "" });
   try {
     const difficultyInstruction = difficulty === "mixed" 
       ? "Include a mix of easy, medium, and hard difficulties." 

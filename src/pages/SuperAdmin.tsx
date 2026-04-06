@@ -166,6 +166,9 @@ export default function SuperAdmin({ user }: SuperAdminProps) {
   }, [testMcqSearch, editingTest?.category, isTestModalOpen]);
 
   const handleGenerateAiMockTest = async () => {
+    if (window.aistudio && !(await window.aistudio.hasSelectedApiKey())) {
+      await window.aistudio.openSelectKey();
+    }
     setLoading(true);
     stopSeedingRef.current = false;
     addLog(`Starting AI Mock Test Generation: ${aiTestConfig.title}`, "info");
@@ -189,23 +192,32 @@ export default function SuperAdmin({ user }: SuperAdminProps) {
           const countToGen = Math.min(questionsPerTopic, aiTestConfig.questionsPerCategory - catGenerated);
           setSeedingStatus(`Generating ${topic.name} (${countToGen} questions)...`);
           
-          const generated = await generateMCQs(cat.id, topic.id, countToGen, aiTestConfig.difficulty);
-          const batch = writeBatch(db);
-          const newIds: string[] = [];
-          
-          generated.forEach(g => {
-            const newDocRef = doc(collection(db, "mcqs"));
-            batch.set(newDocRef, g);
-            newIds.push(newDocRef.id);
-          });
-          
-          await batch.commit();
-          allMcqIds.push(...newIds);
-          catGenerated += generated.length;
-          totalGenerated += generated.length;
-          
-          addLog(`Seeded ${generated.length} questions for ${topic.name}`, "success");
-          await new Promise(r => setTimeout(r, 800)); // Rate limit protection
+          try {
+            const generated = await generateMCQs(cat.id, topic.id, countToGen, aiTestConfig.difficulty);
+            const batch = writeBatch(db);
+            const newIds: string[] = [];
+            
+            generated.forEach(g => {
+              const newDocRef = doc(collection(db, "mcqs"));
+              batch.set(newDocRef, g);
+              newIds.push(newDocRef.id);
+            });
+            
+            await batch.commit();
+            allMcqIds.push(...newIds);
+            catGenerated += generated.length;
+            totalGenerated += generated.length;
+            
+            addLog(`Seeded ${generated.length} questions for ${topic.name}`, "success");
+            await new Promise(r => setTimeout(r, 800)); // Rate limit protection
+          } catch (error: any) {
+            if (error.message.includes("quota") || error.message.includes("limit")) {
+              addLog("API Quota exceeded. Please select a valid paid API key.", "error");
+              if (window.aistudio) await window.aistudio.openSelectKey();
+              break;
+            }
+            throw error;
+          }
         }
       }
 
@@ -238,6 +250,9 @@ export default function SuperAdmin({ user }: SuperAdminProps) {
   };
 
   const handleSeed = async () => {
+    if (window.aistudio && !(await window.aistudio.hasSelectedApiKey())) {
+      await window.aistudio.openSelectKey();
+    }
     setLoading(true);
     stopSeedingRef.current = false;
     addLog("Starting AI Seeding...", "info");
@@ -260,14 +275,23 @@ export default function SuperAdmin({ user }: SuperAdminProps) {
             }
           }
 
-          setSeedingStatus(`Generating ${topic.name}...`);
-          const generated = await generateMCQs(cat.id, topic.id, seedCount, seedDifficulty);
-          const batch = writeBatch(db);
-          generated.forEach(g => batch.set(doc(collection(db, "mcqs")), g));
-          await batch.commit();
-          total += generated.length;
-          addLog(`Seeded ${generated.length} questions for ${topic.name}`, "success");
-          await new Promise(r => setTimeout(r, 1000));
+          try {
+            setSeedingStatus(`Generating ${topic.name}...`);
+            const generated = await generateMCQs(cat.id, topic.id, seedCount, seedDifficulty);
+            const batch = writeBatch(db);
+            generated.forEach(g => batch.set(doc(collection(db, "mcqs")), g));
+            await batch.commit();
+            total += generated.length;
+            addLog(`Seeded ${generated.length} questions for ${topic.name}`, "success");
+            await new Promise(r => setTimeout(r, 1000));
+          } catch (error: any) {
+            if (error.message.includes("quota") || error.message.includes("limit")) {
+              addLog("API Quota exceeded. Please select a valid paid API key.", "error");
+              if (window.aistudio) await window.aistudio.openSelectKey();
+              break;
+            }
+            throw error;
+          }
         }
       }
       addLog(`Seeding complete. Total: ${total}`, "success");
@@ -572,17 +596,17 @@ export default function SuperAdmin({ user }: SuperAdminProps) {
       <AnimatePresence>
         {isMcqModalOpen && (
           <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-sm">
-            <motion.div initial={{ opacity: 0, scale: 0.95 }} animate={{ opacity: 1, scale: 1 }} className="bg-white w-full max-w-2xl rounded-[2.5rem] p-8 space-y-6 max-h-[90vh] overflow-y-auto">
+            <motion.div initial={{ opacity: 0, scale: 0.95 }} animate={{ opacity: 1, scale: 1 }} className="bg-white w-full max-w-2xl rounded-[2.5rem] p-6 md:p-8 space-y-4 md:space-y-6 max-h-[90vh] overflow-y-auto custom-scrollbar">
               <h3 className="text-2xl font-black text-slate-900">Edit MCQ</h3>
               <form onSubmit={handleSaveMcq} className="space-y-4">
-                <textarea value={editingMcq.question} onChange={e => setEditingMcq({...editingMcq, question: e.target.value})} className="w-full p-4 bg-slate-50 border border-slate-200 rounded-xl" placeholder="Question" rows={3} />
+                <textarea value={editingMcq.question} onChange={e => setEditingMcq({...editingMcq, question: e.target.value})} className="w-full p-4 bg-slate-50 border border-slate-200 rounded-xl text-sm" placeholder="Question" rows={3} />
                 {editingMcq.options.map((opt: string, i: number) => (
-                  <input key={i} value={opt} onChange={e => { const o = [...editingMcq.options]; o[i] = e.target.value; setEditingMcq({...editingMcq, options: o}); }} className="w-full p-3 bg-slate-50 border border-slate-200 rounded-xl" placeholder={`Option ${i+1}`} />
+                  <input key={i} value={opt} onChange={e => { const o = [...editingMcq.options]; o[i] = e.target.value; setEditingMcq({...editingMcq, options: o}); }} className="w-full p-3 bg-slate-50 border border-slate-200 rounded-xl text-sm" placeholder={`Option ${i+1}`} />
                 ))}
-                <input value={editingMcq.answer} onChange={e => setEditingMcq({...editingMcq, answer: e.target.value})} className="w-full p-3 bg-slate-50 border border-slate-200 rounded-xl" placeholder="Correct Answer" />
-                <div className="flex gap-4">
-                  <button type="button" onClick={() => setIsMcqModalOpen(false)} className="flex-1 py-4 bg-slate-100 rounded-xl font-bold">Cancel</button>
-                  <button type="submit" className="flex-1 py-4 bg-blue-600 text-white rounded-xl font-bold">Save</button>
+                <input value={editingMcq.answer} onChange={e => setEditingMcq({...editingMcq, answer: e.target.value})} className="w-full p-3 bg-slate-50 border border-slate-200 rounded-xl text-sm" placeholder="Correct Answer" />
+                <div className="flex gap-4 pt-2">
+                  <button type="button" onClick={() => setIsMcqModalOpen(false)} className="flex-1 py-3 md:py-4 bg-slate-100 rounded-xl font-bold text-sm">Cancel</button>
+                  <button type="submit" className="flex-1 py-3 md:py-4 bg-blue-600 text-white rounded-xl font-bold text-sm">Save</button>
                 </div>
               </form>
             </motion.div>
@@ -594,7 +618,7 @@ export default function SuperAdmin({ user }: SuperAdminProps) {
       <AnimatePresence>
         {isTestModalOpen && (
           <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-sm">
-            <motion.div initial={{ opacity: 0, scale: 0.95 }} animate={{ opacity: 1, scale: 1 }} className="bg-white w-full max-w-3xl rounded-[2.5rem] p-8 space-y-6 max-h-[90vh] overflow-y-auto custom-scrollbar">
+            <motion.div initial={{ opacity: 0, scale: 0.95 }} animate={{ opacity: 1, scale: 1 }} className="bg-white w-full max-w-3xl rounded-[2.5rem] p-6 md:p-8 space-y-4 md:space-y-6 max-h-[90vh] overflow-y-auto custom-scrollbar">
               <div className="flex justify-between items-center">
                 <h3 className="text-2xl font-black text-slate-900">Mock Test Config</h3>
                 <button onClick={() => setIsTestModalOpen(false)} className="p-2 hover:bg-slate-100 rounded-full transition-all">
@@ -602,21 +626,21 @@ export default function SuperAdmin({ user }: SuperAdminProps) {
                 </button>
               </div>
               
-              <form onSubmit={handleSaveTest} className="space-y-6">
-                <div className="space-y-4">
-                  <input value={editingTest.title} onChange={e => setEditingTest({...editingTest, title: e.target.value})} className="w-full p-4 bg-slate-50 border border-slate-200 rounded-xl outline-none focus:ring-2 focus:ring-blue-500" placeholder="Test Title" required />
-                  <textarea value={editingTest.description} onChange={e => setEditingTest({...editingTest, description: e.target.value})} className="w-full p-4 bg-slate-50 border border-slate-200 rounded-xl outline-none focus:ring-2 focus:ring-blue-500" placeholder="Description" rows={2} />
+              <form onSubmit={handleSaveTest} className="space-y-4 md:space-y-6">
+                <div className="space-y-3 md:space-y-4">
+                  <input value={editingTest.title} onChange={e => setEditingTest({...editingTest, title: e.target.value})} className="w-full p-3 md:p-4 bg-slate-50 border border-slate-200 rounded-xl outline-none focus:ring-2 focus:ring-blue-500 text-sm" placeholder="Test Title" required />
+                  <textarea value={editingTest.description} onChange={e => setEditingTest({...editingTest, description: e.target.value})} className="w-full p-3 md:p-4 bg-slate-50 border border-slate-200 rounded-xl outline-none focus:ring-2 focus:ring-blue-500 text-sm" placeholder="Description" rows={2} />
                   
                   <div className="grid grid-cols-2 gap-4">
                     <div className="space-y-1">
                       <label className="text-[10px] font-black uppercase tracking-widest text-slate-400 ml-2">Category</label>
-                      <select value={editingTest.category} onChange={e => setEditingTest({...editingTest, category: e.target.value, questions: []})} className="w-full p-3 bg-slate-50 border border-slate-200 rounded-xl outline-none focus:ring-2 focus:ring-blue-500">
+                      <select value={editingTest.category} onChange={e => setEditingTest({...editingTest, category: e.target.value, questions: []})} className="w-full p-2.5 md:p-3 bg-slate-50 border border-slate-200 rounded-xl outline-none focus:ring-2 focus:ring-blue-500 text-sm">
                         {CATEGORIES.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
                       </select>
                     </div>
                     <div className="space-y-1">
                       <label className="text-[10px] font-black uppercase tracking-widest text-slate-400 ml-2">Test Type</label>
-                      <select value={editingTest.type} onChange={e => setEditingTest({...editingTest, type: e.target.value})} className="w-full p-3 bg-slate-50 border border-slate-200 rounded-xl outline-none focus:ring-2 focus:ring-blue-500">
+                      <select value={editingTest.type} onChange={e => setEditingTest({...editingTest, type: e.target.value})} className="w-full p-2.5 md:p-3 bg-slate-50 border border-slate-200 rounded-xl outline-none focus:ring-2 focus:ring-blue-500 text-sm">
                         <option value="topic">Topic Test</option>
                         <option value="sectional">Sectional</option>
                         <option value="full">Full Mock</option>
@@ -627,11 +651,11 @@ export default function SuperAdmin({ user }: SuperAdminProps) {
                   <div className="grid grid-cols-2 gap-4">
                     <div className="space-y-1">
                       <label className="text-[10px] font-black uppercase tracking-widest text-slate-400 ml-2">Duration (Mins)</label>
-                      <input type="number" value={editingTest.duration} onChange={e => setEditingTest({...editingTest, duration: parseInt(e.target.value) || 0})} className="w-full p-3 bg-slate-50 border border-slate-200 rounded-xl outline-none focus:ring-2 focus:ring-blue-500" />
+                      <input type="number" value={editingTest.duration} onChange={e => setEditingTest({...editingTest, duration: parseInt(e.target.value) || 0})} className="w-full p-2.5 md:p-3 bg-slate-50 border border-slate-200 rounded-xl outline-none focus:ring-2 focus:ring-blue-500 text-sm" />
                     </div>
                     <div className="space-y-1">
                       <label className="text-[10px] font-black uppercase tracking-widest text-slate-400 ml-2">Total Marks</label>
-                      <input type="number" value={editingTest.totalMarks} onChange={e => setEditingTest({...editingTest, totalMarks: parseInt(e.target.value) || 0})} className="w-full p-3 bg-slate-50 border border-slate-200 rounded-xl outline-none focus:ring-2 focus:ring-blue-500" />
+                      <input type="number" value={editingTest.totalMarks} onChange={e => setEditingTest({...editingTest, totalMarks: parseInt(e.target.value) || 0})} className="w-full p-2.5 md:p-3 bg-slate-50 border border-slate-200 rounded-xl outline-none focus:ring-2 focus:ring-blue-500 text-sm" />
                     </div>
                   </div>
                 </div>
@@ -645,13 +669,13 @@ export default function SuperAdmin({ user }: SuperAdminProps) {
                         placeholder="Search MCQs..." 
                         value={testMcqSearch}
                         onChange={e => setTestMcqSearch(e.target.value)}
-                        className="pl-8 pr-4 py-2 bg-slate-50 border border-slate-200 rounded-lg text-xs outline-none focus:ring-2 focus:ring-blue-500"
+                        className="pl-8 pr-4 py-2 bg-slate-50 border border-slate-200 rounded-lg text-[10px] outline-none focus:ring-2 focus:ring-blue-500"
                       />
-                      <Database size={14} className="absolute left-2.5 top-2.5 text-slate-400" />
+                      <Database size={12} className="absolute left-2.5 top-2.5 text-slate-400" />
                     </div>
                   </div>
 
-                  <div className="space-y-2 max-h-[300px] overflow-y-auto pr-2 custom-scrollbar">
+                  <div className="space-y-2 max-h-[250px] overflow-y-auto pr-2 custom-scrollbar">
                     {isSearchingMcqs ? (
                       <div className="py-8 flex justify-center"><RefreshCw className="animate-spin text-blue-600" /></div>
                     ) : testMcqResults.length === 0 ? (
@@ -706,7 +730,7 @@ export default function SuperAdmin({ user }: SuperAdminProps) {
       <AnimatePresence>
         {isAiTestModalOpen && (
           <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-sm">
-            <motion.div initial={{ opacity: 0, scale: 0.95 }} animate={{ opacity: 1, scale: 1 }} className="bg-white w-full max-w-xl rounded-[2.5rem] p-8 space-y-6">
+            <motion.div initial={{ opacity: 0, scale: 0.95 }} animate={{ opacity: 1, scale: 1 }} className="bg-white w-full max-w-xl rounded-[2.5rem] p-6 md:p-8 space-y-4 md:space-y-6 max-h-[90vh] overflow-y-auto custom-scrollbar">
               <div className="flex justify-between items-center">
                 <h3 className="text-2xl font-black text-slate-900">AI Mock Test Generator</h3>
                 <button onClick={() => setIsAiTestModalOpen(false)} className="p-2 hover:bg-slate-100 rounded-full transition-all">
@@ -714,7 +738,7 @@ export default function SuperAdmin({ user }: SuperAdminProps) {
                 </button>
               </div>
               
-              <div className="space-y-6">
+              <div className="space-y-4 md:space-y-6">
                 <div className="p-4 bg-blue-50 border border-blue-100 rounded-2xl flex gap-4">
                   <div className="w-10 h-10 bg-blue-600 rounded-xl flex items-center justify-center text-white shrink-0">
                     <Zap size={20} />
@@ -727,13 +751,13 @@ export default function SuperAdmin({ user }: SuperAdminProps) {
                   </div>
                 </div>
 
-                <div className="space-y-4">
+                <div className="space-y-3 md:space-y-4">
                   <div className="space-y-1">
                     <label className="text-[10px] font-black uppercase tracking-widest text-slate-400 ml-2">Test Title</label>
                     <input 
                       value={aiTestConfig.title} 
                       onChange={e => setAiTestConfig({...aiTestConfig, title: e.target.value})}
-                      className="w-full p-4 bg-slate-50 border border-slate-200 rounded-xl outline-none focus:ring-2 focus:ring-blue-500" 
+                      className="w-full p-3 md:p-4 bg-slate-50 border border-slate-200 rounded-xl outline-none focus:ring-2 focus:ring-blue-500 text-sm" 
                       placeholder="e.g. Full Syllabus Mock Test #1"
                     />
                   </div>
@@ -745,7 +769,7 @@ export default function SuperAdmin({ user }: SuperAdminProps) {
                         type="number"
                         value={aiTestConfig.questionsPerCategory} 
                         onChange={e => setAiTestConfig({...aiTestConfig, questionsPerCategory: parseInt(e.target.value) || 0})}
-                        className="w-full p-3 bg-slate-50 border border-slate-200 rounded-xl outline-none focus:ring-2 focus:ring-blue-500"
+                        className="w-full p-3 bg-slate-50 border border-slate-200 rounded-xl outline-none focus:ring-2 focus:ring-blue-500 text-sm"
                       />
                     </div>
                     <div className="space-y-1">
@@ -753,7 +777,7 @@ export default function SuperAdmin({ user }: SuperAdminProps) {
                       <select 
                         value={aiTestConfig.difficulty} 
                         onChange={e => setAiTestConfig({...aiTestConfig, difficulty: e.target.value})}
-                        className="w-full p-3 bg-slate-50 border border-slate-200 rounded-xl outline-none focus:ring-2 focus:ring-blue-500"
+                        className="w-full p-3 bg-slate-50 border border-slate-200 rounded-xl outline-none focus:ring-2 focus:ring-blue-500 text-sm"
                       >
                         <option value="mixed">Mixed</option>
                         <option value="easy">Easy</option>
@@ -770,7 +794,7 @@ export default function SuperAdmin({ user }: SuperAdminProps) {
                         type="number"
                         value={aiTestConfig.duration} 
                         onChange={e => setAiTestConfig({...aiTestConfig, duration: parseInt(e.target.value) || 0})}
-                        className="w-full p-3 bg-slate-50 border border-slate-200 rounded-xl outline-none focus:ring-2 focus:ring-blue-500"
+                        className="w-full p-3 bg-slate-50 border border-slate-200 rounded-xl outline-none focus:ring-2 focus:ring-blue-500 text-sm"
                       />
                     </div>
                     <div className="space-y-1">
@@ -779,21 +803,21 @@ export default function SuperAdmin({ user }: SuperAdminProps) {
                         type="number"
                         value={aiTestConfig.totalMarks} 
                         onChange={e => setAiTestConfig({...aiTestConfig, totalMarks: parseInt(e.target.value) || 0})}
-                        className="w-full p-3 bg-slate-50 border border-slate-200 rounded-xl outline-none focus:ring-2 focus:ring-blue-500"
+                        className="w-full p-3 bg-slate-50 border border-slate-200 rounded-xl outline-none focus:ring-2 focus:ring-blue-500 text-sm"
                       />
                     </div>
                   </div>
                 </div>
 
-                <div className="p-4 bg-slate-50 rounded-2xl border border-slate-100 flex justify-between items-center">
-                  <span className="text-xs font-black text-slate-500 uppercase">Estimated Total Questions:</span>
+                <div className="p-3 md:p-4 bg-slate-50 rounded-2xl border border-slate-100 flex justify-between items-center">
+                  <span className="text-xs font-black text-slate-500 uppercase tracking-widest">Estimated Total Questions:</span>
                   <span className="text-lg font-black text-blue-600">{aiTestConfig.questionsPerCategory * CATEGORIES.length}</span>
                 </div>
 
-                <div className="flex gap-4 pt-4">
+                <div className="flex gap-4 pt-2">
                   <button 
                     onClick={() => setIsAiTestModalOpen(false)}
-                    className="flex-1 py-4 bg-slate-100 rounded-2xl font-black uppercase tracking-widest text-xs text-slate-600 hover:bg-slate-200 transition-all"
+                    className="flex-1 py-3 md:py-4 bg-slate-100 rounded-2xl font-black uppercase tracking-widest text-[10px] text-slate-600 hover:bg-slate-200 transition-all"
                   >
                     Cancel
                   </button>
