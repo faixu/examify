@@ -50,6 +50,16 @@ export default function SuperAdmin({ user }: SuperAdminProps) {
   const [testMcqResults, setTestMcqResults] = useState<MCQ[]>([]);
   const [isSearchingMcqs, setIsSearchingMcqs] = useState(false);
 
+  // AI Mock Test Gen State
+  const [isAiTestModalOpen, setIsAiTestModalOpen] = useState(false);
+  const [aiTestConfig, setAiTestConfig] = useState({
+    title: "Full Mock Test",
+    questionsPerCategory: 20,
+    difficulty: "mixed",
+    duration: 120,
+    totalMarks: 100
+  });
+
   const isAdmin = user?.email?.toLowerCase() === "flust786@gmail.com";
 
   useEffect(() => {
@@ -154,6 +164,78 @@ export default function SuperAdmin({ user }: SuperAdminProps) {
     }, 500);
     return () => clearTimeout(timer);
   }, [testMcqSearch, editingTest?.category, isTestModalOpen]);
+
+  const handleGenerateAiMockTest = async () => {
+    setLoading(true);
+    stopSeedingRef.current = false;
+    addLog(`Starting AI Mock Test Generation: ${aiTestConfig.title}`, "info");
+    
+    try {
+      const allMcqIds: string[] = [];
+      const categories = CATEGORIES;
+      let totalGenerated = 0;
+
+      for (const cat of categories) {
+        if (stopSeedingRef.current) break;
+        addLog(`Generating ${aiTestConfig.questionsPerCategory} questions for ${cat.name}...`, "info");
+        
+        // Distribute questions across topics in this category
+        const questionsPerTopic = Math.max(1, Math.ceil(aiTestConfig.questionsPerCategory / cat.topics.length));
+        let catGenerated = 0;
+
+        for (const topic of cat.topics) {
+          if (stopSeedingRef.current || catGenerated >= aiTestConfig.questionsPerCategory) break;
+          
+          const countToGen = Math.min(questionsPerTopic, aiTestConfig.questionsPerCategory - catGenerated);
+          setSeedingStatus(`Generating ${topic.name} (${countToGen} questions)...`);
+          
+          const generated = await generateMCQs(cat.id, topic.id, countToGen, aiTestConfig.difficulty);
+          const batch = writeBatch(db);
+          const newIds: string[] = [];
+          
+          generated.forEach(g => {
+            const newDocRef = doc(collection(db, "mcqs"));
+            batch.set(newDocRef, g);
+            newIds.push(newDocRef.id);
+          });
+          
+          await batch.commit();
+          allMcqIds.push(...newIds);
+          catGenerated += generated.length;
+          totalGenerated += generated.length;
+          
+          addLog(`Seeded ${generated.length} questions for ${topic.name}`, "success");
+          await new Promise(r => setTimeout(r, 800)); // Rate limit protection
+        }
+      }
+
+      if (allMcqIds.length > 0) {
+        const testData: Partial<MockTest> = {
+          title: aiTestConfig.title,
+          description: `AI Generated Full Mock Test with ${allMcqIds.length} questions across all sections.`,
+          category: "all",
+          type: "full",
+          duration: aiTestConfig.duration,
+          totalMarks: aiTestConfig.totalMarks,
+          questions: allMcqIds,
+          createdAt: serverTimestamp() as any
+        };
+        
+        await addDoc(collection(db, "mockTests"), testData);
+        addLog(`Mock Test "${aiTestConfig.title}" created successfully with ${allMcqIds.length} questions!`, "success");
+        fetchMockTests();
+        setIsAiTestModalOpen(false);
+      } else {
+        addLog("No questions were generated. Mock test creation aborted.", "error");
+      }
+    } catch (error: any) {
+      addLog(`Error during AI Mock Test Generation: ${error.message}`, "error");
+      console.error(error);
+    } finally {
+      setLoading(false);
+      setSeedingStatus("");
+    }
+  };
 
   const handleSeed = async () => {
     setLoading(true);
@@ -396,15 +478,24 @@ export default function SuperAdmin({ user }: SuperAdminProps) {
               <section className="bg-white p-8 rounded-[2.5rem] border border-slate-100 shadow-sm space-y-6">
                 <div className="flex justify-between items-center">
                   <h2 className="text-2xl font-black text-slate-900">Mock Test Management</h2>
-                  <button 
-                    onClick={() => {
-                      setEditingTest({ title: "", description: "", category: CATEGORIES[0].id, type: "full", duration: 60, totalMarks: 100, questions: [] });
-                      setIsTestModalOpen(true);
-                    }}
-                    className="p-3 bg-blue-600 text-white rounded-xl hover:bg-blue-700 transition-all"
-                  >
-                    <Plus />
-                  </button>
+                  <div className="flex gap-3">
+                    <button 
+                      onClick={() => setIsAiTestModalOpen(true)}
+                      className="flex items-center gap-2 px-4 py-3 bg-blue-50 text-blue-600 rounded-xl font-black uppercase tracking-widest text-[10px] hover:bg-blue-100 transition-all"
+                    >
+                      <Zap size={14} />
+                      AI Generate Full Mock
+                    </button>
+                    <button 
+                      onClick={() => {
+                        setEditingTest({ title: "", description: "", category: CATEGORIES[0].id, type: "full", duration: 60, totalMarks: 100, questions: [] });
+                        setIsTestModalOpen(true);
+                      }}
+                      className="p-3 bg-blue-600 text-white rounded-xl hover:bg-blue-700 transition-all"
+                    >
+                      <Plus />
+                    </button>
+                  </div>
                 </div>
 
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
@@ -607,6 +698,115 @@ export default function SuperAdmin({ user }: SuperAdminProps) {
                   <button type="submit" className="flex-1 py-4 bg-blue-600 text-white rounded-2xl font-black uppercase tracking-widest text-xs hover:bg-blue-700 transition-all shadow-lg shadow-blue-100">Save Mock Test</button>
                 </div>
               </form>
+            </motion.div>
+          </div>
+        )}
+      </AnimatePresence>
+      {/* AI Mock Test Modal */}
+      <AnimatePresence>
+        {isAiTestModalOpen && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-sm">
+            <motion.div initial={{ opacity: 0, scale: 0.95 }} animate={{ opacity: 1, scale: 1 }} className="bg-white w-full max-w-xl rounded-[2.5rem] p-8 space-y-6">
+              <div className="flex justify-between items-center">
+                <h3 className="text-2xl font-black text-slate-900">AI Mock Test Generator</h3>
+                <button onClick={() => setIsAiTestModalOpen(false)} className="p-2 hover:bg-slate-100 rounded-full transition-all">
+                  <XCircle size={24} className="text-slate-400" />
+                </button>
+              </div>
+              
+              <div className="space-y-6">
+                <div className="p-4 bg-blue-50 border border-blue-100 rounded-2xl flex gap-4">
+                  <div className="w-10 h-10 bg-blue-600 rounded-xl flex items-center justify-center text-white shrink-0">
+                    <Zap size={20} />
+                  </div>
+                  <div>
+                    <h4 className="text-sm font-black text-blue-900">Smart Generation</h4>
+                    <p className="text-xs text-blue-700 font-medium leading-relaxed">
+                      This will generate new questions for every category in the syllabus and bundle them into a single Full Mock Test.
+                    </p>
+                  </div>
+                </div>
+
+                <div className="space-y-4">
+                  <div className="space-y-1">
+                    <label className="text-[10px] font-black uppercase tracking-widest text-slate-400 ml-2">Test Title</label>
+                    <input 
+                      value={aiTestConfig.title} 
+                      onChange={e => setAiTestConfig({...aiTestConfig, title: e.target.value})}
+                      className="w-full p-4 bg-slate-50 border border-slate-200 rounded-xl outline-none focus:ring-2 focus:ring-blue-500" 
+                      placeholder="e.g. Full Syllabus Mock Test #1"
+                    />
+                  </div>
+
+                  <div className="grid grid-cols-2 gap-4">
+                    <div className="space-y-1">
+                      <label className="text-[10px] font-black uppercase tracking-widest text-slate-400 ml-2">Questions per Section</label>
+                      <input 
+                        type="number"
+                        value={aiTestConfig.questionsPerCategory} 
+                        onChange={e => setAiTestConfig({...aiTestConfig, questionsPerCategory: parseInt(e.target.value) || 0})}
+                        className="w-full p-3 bg-slate-50 border border-slate-200 rounded-xl outline-none focus:ring-2 focus:ring-blue-500"
+                      />
+                    </div>
+                    <div className="space-y-1">
+                      <label className="text-[10px] font-black uppercase tracking-widest text-slate-400 ml-2">Difficulty</label>
+                      <select 
+                        value={aiTestConfig.difficulty} 
+                        onChange={e => setAiTestConfig({...aiTestConfig, difficulty: e.target.value})}
+                        className="w-full p-3 bg-slate-50 border border-slate-200 rounded-xl outline-none focus:ring-2 focus:ring-blue-500"
+                      >
+                        <option value="mixed">Mixed</option>
+                        <option value="easy">Easy</option>
+                        <option value="medium">Medium</option>
+                        <option value="hard">Hard</option>
+                      </select>
+                    </div>
+                  </div>
+
+                  <div className="grid grid-cols-2 gap-4">
+                    <div className="space-y-1">
+                      <label className="text-[10px] font-black uppercase tracking-widest text-slate-400 ml-2">Duration (Mins)</label>
+                      <input 
+                        type="number"
+                        value={aiTestConfig.duration} 
+                        onChange={e => setAiTestConfig({...aiTestConfig, duration: parseInt(e.target.value) || 0})}
+                        className="w-full p-3 bg-slate-50 border border-slate-200 rounded-xl outline-none focus:ring-2 focus:ring-blue-500"
+                      />
+                    </div>
+                    <div className="space-y-1">
+                      <label className="text-[10px] font-black uppercase tracking-widest text-slate-400 ml-2">Total Marks</label>
+                      <input 
+                        type="number"
+                        value={aiTestConfig.totalMarks} 
+                        onChange={e => setAiTestConfig({...aiTestConfig, totalMarks: parseInt(e.target.value) || 0})}
+                        className="w-full p-3 bg-slate-50 border border-slate-200 rounded-xl outline-none focus:ring-2 focus:ring-blue-500"
+                      />
+                    </div>
+                  </div>
+                </div>
+
+                <div className="p-4 bg-slate-50 rounded-2xl border border-slate-100 flex justify-between items-center">
+                  <span className="text-xs font-black text-slate-500 uppercase">Estimated Total Questions:</span>
+                  <span className="text-lg font-black text-blue-600">{aiTestConfig.questionsPerCategory * CATEGORIES.length}</span>
+                </div>
+
+                <div className="flex gap-4 pt-4">
+                  <button 
+                    onClick={() => setIsAiTestModalOpen(false)}
+                    className="flex-1 py-4 bg-slate-100 rounded-2xl font-black uppercase tracking-widest text-xs text-slate-600 hover:bg-slate-200 transition-all"
+                  >
+                    Cancel
+                  </button>
+                  <button 
+                    onClick={handleGenerateAiMockTest}
+                    disabled={loading}
+                    className="flex-1 py-4 bg-blue-600 text-white rounded-2xl font-black uppercase tracking-widest text-xs hover:bg-blue-700 transition-all shadow-lg shadow-blue-100 flex items-center justify-center gap-2 disabled:opacity-50"
+                  >
+                    {loading ? <RefreshCw className="animate-spin" size={16} /> : <Zap size={16} />}
+                    Generate Test
+                  </button>
+                </div>
+              </div>
             </motion.div>
           </div>
         )}
