@@ -1,23 +1,47 @@
 import { useParams, Link, useNavigate } from "react-router-dom";
 import { CATEGORIES } from "../constants";
 import { motion } from "motion/react";
-import { ArrowLeft, BookOpen, ChevronRight, Zap, Trophy, Clock, CheckCircle } from "lucide-react";
+import { ArrowLeft, BookOpen, ChevronRight, Zap, Trophy, Clock, CheckCircle, Loader2 } from "lucide-react";
 import { useEffect, useState } from "react";
 import { Category } from "../types";
+import { db, collection, query, where, getDocs } from "../firebase";
 
 export default function Topics() {
   const { categoryId } = useParams();
   const navigate = useNavigate();
   const [category, setCategory] = useState<Category | null>(null);
+  const [topicCounts, setTopicCounts] = useState<Record<string, number>>({});
+  const [loading, setLoading] = useState(true);
 
   useEffect(() => {
     const foundCategory = CATEGORIES.find((cat) => cat.id === categoryId);
     if (foundCategory) {
       setCategory(foundCategory);
+      fetchTopicCounts(foundCategory.id);
     } else {
       navigate("/categories");
     }
   }, [categoryId, navigate]);
+
+  const fetchTopicCounts = async (catId: string) => {
+    setLoading(true);
+    try {
+      const q = query(collection(db, "mcqs"), where("category", "==", catId));
+      const snapshot = await getDocs(q);
+      const counts: Record<string, number> = {};
+      
+      snapshot.docs.forEach(doc => {
+        const topicId = doc.data().topic;
+        counts[topicId] = (counts[topicId] || 0) + 1;
+      });
+      
+      setTopicCounts(counts);
+    } catch (error) {
+      console.error("Failed to fetch topic counts", error);
+    } finally {
+      setLoading(false);
+    }
+  };
 
   if (!category) return null;
 
@@ -89,7 +113,7 @@ export default function Topics() {
               </div>
               <div className="flex items-center gap-4">
                 <div className="hidden sm:flex flex-col items-end text-xs font-bold text-slate-400 uppercase tracking-widest">
-                  <span>5000+ MCQs</span>
+                  <span>{topicCounts[topic.id] || 0} MCQs</span>
                   <span className="text-blue-500">Practice Now</span>
                 </div>
                 <ChevronRight className="text-slate-300 group-hover:text-blue-600 transition-colors" size={24} />

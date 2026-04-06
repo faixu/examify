@@ -3,8 +3,8 @@ import { useEffect, useState, useRef } from "react";
 import { MCQ, UserProfile, TestAttempt } from "../types";
 import { getRandomQuestions } from "../lib/mockData";
 import { motion, AnimatePresence } from "motion/react";
-import { ArrowLeft, ArrowRight, CheckCircle, XCircle, Timer, Trophy, Zap, AlertCircle, LayoutDashboard, RotateCcw } from "lucide-react";
-import { db, doc, updateDoc, increment, addDoc, collection, Timestamp } from "../firebase";
+import { ArrowLeft, ArrowRight, CheckCircle, XCircle, Timer, Trophy, Zap, AlertCircle, LayoutDashboard, RotateCcw, Loader2 } from "lucide-react";
+import { db, doc, updateDoc, increment, addDoc, collection, Timestamp, query, where, getDocs } from "../firebase";
 import ReactMarkdown from "react-markdown";
 
 interface TestProps {
@@ -15,6 +15,7 @@ export default function Test({ user }: TestProps) {
   const { topicId } = useParams();
   const navigate = useNavigate();
   const [questions, setQuestions] = useState<MCQ[]>([]);
+  const [loading, setLoading] = useState(true);
   const [currentIndex, setCurrentIndex] = useState(0);
   const [selectedAnswers, setSelectedAnswers] = useState<Record<number, string>>({});
   const [isFinished, setIsFinished] = useState(false);
@@ -23,10 +24,33 @@ export default function Test({ user }: TestProps) {
   const timerRef = useRef<NodeJS.Timeout | null>(null);
 
   useEffect(() => {
-    if (topicId) {
-      const qs = getRandomQuestions(topicId, 10);
-      setQuestions(qs);
-    }
+    const fetchQuestions = async () => {
+      if (!topicId) return;
+      setLoading(true);
+      try {
+        const q = query(collection(db, "mcqs"), where("topic", "==", topicId));
+        const snapshot = await getDocs(q);
+        
+        if (!snapshot.empty) {
+          const fetchedQs = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as MCQ));
+          // Shuffle and limit to 10
+          setQuestions(fetchedQs.sort(() => Math.random() - 0.5).slice(0, 10));
+        } else {
+          // Fallback to mock data if no questions in Firestore
+          console.log("No questions in Firestore, falling back to mock data");
+          const qs = getRandomQuestions(topicId, 10);
+          setQuestions(qs);
+        }
+      } catch (error) {
+        console.error("Failed to fetch questions", error);
+        const qs = getRandomQuestions(topicId, 10);
+        setQuestions(qs);
+      } finally {
+        setLoading(false);
+      }
+    };
+
+    fetchQuestions();
   }, [topicId]);
 
   useEffect(() => {
@@ -93,7 +117,34 @@ export default function Test({ user }: TestProps) {
     return `${mins}:${secs.toString().padStart(2, "0")}`;
   };
 
-  if (questions.length === 0) return null;
+  if (loading) {
+    return (
+      <div className="min-h-[60vh] flex flex-col items-center justify-center space-y-4">
+        <Loader2 className="w-12 h-12 text-blue-600 animate-spin" />
+        <p className="text-slate-500 font-bold uppercase tracking-widest text-xs">Loading Questions...</p>
+      </div>
+    );
+  }
+
+  if (questions.length === 0) {
+    return (
+      <div className="min-h-[60vh] flex flex-col items-center justify-center space-y-6 text-center px-4">
+        <div className="w-20 h-20 bg-slate-100 text-slate-400 rounded-3xl flex items-center justify-center">
+          <AlertCircle size={40} />
+        </div>
+        <div className="space-y-2">
+          <h2 className="text-2xl font-black text-slate-900">No Questions Available</h2>
+          <p className="text-slate-500 max-w-md">We're currently updating the question bank for this topic. Please try again later or select another topic.</p>
+        </div>
+        <Link 
+          to="/categories"
+          className="bg-slate-900 text-white px-8 py-4 rounded-2xl font-bold hover:bg-slate-800 transition-all"
+        >
+          Back to Categories
+        </Link>
+      </div>
+    );
+  }
 
   if (isFinished) {
     const score = questions.reduce((acc, q, idx) => {
