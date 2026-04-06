@@ -1,8 +1,8 @@
-import { UserProfile } from "../types";
+import { UserProfile, MCQ, MockTest } from "../types";
 import { useEffect, useState, useRef } from "react";
-import { db, collection, getDocs, addDoc, deleteDoc, query, where, writeBatch, doc, handleFirestoreError, OperationType, updateDoc } from "../firebase";
+import { db, collection, getDocs, addDoc, deleteDoc, query, where, writeBatch, doc, handleFirestoreError, OperationType, updateDoc, serverTimestamp } from "../firebase";
 import { motion, AnimatePresence } from "motion/react";
-import { Database, Zap, Trash2, LayoutDashboard, BookOpen, AlertCircle, CheckCircle, RefreshCw, Plus, StopCircle, ScrollText, Info, XCircle } from "lucide-react";
+import { Database, Zap, Trash2, LayoutDashboard, BookOpen, AlertCircle, CheckCircle, RefreshCw, Plus, StopCircle, ScrollText, Info, XCircle, FileText, Settings, BarChart3 } from "lucide-react";
 import { CATEGORIES } from "../constants";
 import { generateMCQs } from "../lib/geminiService";
 import { Link, useNavigate } from "react-router-dom";
@@ -31,13 +31,31 @@ export default function Admin({ user }: AdminProps) {
   const stopSeedingRef = useRef<boolean>(false);
   const logEndRef = useRef<HTMLDivElement>(null);
 
-  const [activeTab, setActiveTab] = useState<"seeding" | "manage">("seeding");
+  const [activeTab, setActiveTab] = useState<"ai-generator" | "mock-tests" | "questions">("ai-generator");
   const [manageSearch, setManageSearch] = useState("");
   const [manageCategory, setManageCategory] = useState("all");
   const [manageTopic, setManageTopic] = useState("all");
-  const [manageQuestions, setManageQuestions] = useState<any[]>([]);
+  const [manageQuestions, setManageQuestions] = useState<MCQ[]>([]);
   const [editingQuestion, setEditingQuestion] = useState<any | null>(null);
   const [isEditing, setIsEditing] = useState(false);
+
+  // Mock Test State
+  const [mockTests, setMockTests] = useState<MockTest[]>([]);
+  const [editingTest, setEditingTest] = useState<any | null>(null);
+  const [isTestModalOpen, setIsTestModalOpen] = useState(false);
+  const [testMcqSearch, setTestMcqSearch] = useState("");
+  const [testMcqResults, setTestMcqResults] = useState<MCQ[]>([]);
+  const [isSearchingMcqs, setIsSearchingMcqs] = useState(false);
+
+  // AI Mock Test Gen State
+  const [isAiTestModalOpen, setIsAiTestModalOpen] = useState(false);
+  const [aiTestConfig, setAiTestConfig] = useState({
+    title: "Full Mock Test",
+    questionsPerCategory: 20,
+    difficulty: "mixed",
+    duration: 120,
+    totalMarks: 100
+  });
 
   const isAdmin = user?.email?.toLowerCase() === "flust786@gmail.com";
 
@@ -47,14 +65,138 @@ export default function Admin({ user }: AdminProps) {
     }
     if (isAdmin) {
       fetchStats();
+      fetchMockTests();
     }
   }, [user, isAdmin, navigate]);
 
   useEffect(() => {
-    if (activeTab === "manage") {
+    if (activeTab === "questions") {
       fetchManageQuestions();
     }
   }, [activeTab, manageCategory, manageTopic]);
+
+  const fetchMockTests = async () => {
+    try {
+      const snapshot = await getDocs(collection(db, "mockTests"));
+      setMockTests(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as MockTest)));
+    } catch (error) {
+      console.error("Failed to fetch mock tests", error);
+    }
+  };
+
+  const searchMcqsForTest = async () => {
+    if (!testMcqSearch && !editingTest?.category) return;
+    setIsSearchingMcqs(true);
+    try {
+      let q = query(collection(db, "mcqs"));
+      if (editingTest?.category) {
+        q = query(q, where("category", "==", editingTest.category));
+      }
+      const snapshot = await getDocs(q);
+      let results = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as MCQ));
+      if (testMcqSearch) {
+        results = results.filter(m => m.question.toLowerCase().includes(testMcqSearch.toLowerCase()));
+      }
+      setTestMcqResults(results.slice(0, 20));
+    } catch (error) {
+      console.error("Search failed", error);
+    } finally {
+      setIsSearchingMcqs(false);
+    }
+  };
+
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      if (isTestModalOpen) searchMcqsForTest();
+    }, 500);
+    return () => clearTimeout(timer);
+  }, [testMcqSearch, editingTest?.category, isTestModalOpen]);
+
+  const handleGenerateAiMockTest = async () => {
+    setLoading(true);
+    stopSeedingRef.current = false;
+    addLog(`Starting AI Mock Test Generation: ${aiTestConfig.title}`, "info");
+    
+    try {
+      const allMcqIds: string[] = [];
+      const categories = CATEGORIES;
+      let totalGenerated = 0;
+
+      for (const cat of categories) {
+        if (stopSeedingRef.current) break;
+        addLog(`Generating ${aiTestConfig.questionsPerCategory} questions for ${cat.name}...`, "info");
+        
+        const questionsPerTopic = Math.max(1, Math.ceil(aiTestConfig.questionsPerCategory / cat.topics.length));
+        let catGenerated = 0;
+
+        for (const topic of cat.topics) {
+          if (stopSeedingRef.current || catGenerated >= aiTestConfig.questionsPerCategory) break;
+          
+          const countToGen = Math.min(questionsPerTopic, aiTestConfig.questionsPerCategory - catGenerated);
+          setSeedingStatus(`Generating ${topic.name} (${countToGen} questions)...`);
+          
+          const generated = await generateMCQs(cat.id, topic.id, countToGen, aiTestConfig.difficulty);
+          const batch = writeBatch(db);
+          const newIds: string[] = [];
+          
+          generated.forEach(g => {
+            const newDocRef = doc(collection(db, "mcqs"));
+            batch.set(newDocRef, g);
+            newIds.push(newDocRef.id);
+          });
+          
+          await batch.commit();
+          allMcqIds.push(...newIds);
+          catGenerated += generated.length;
+          totalGenerated += generated.length;
+          
+          addLog(`Seeded ${generated.length} questions for ${topic.name}`, "success");
+          await new Promise(r => setTimeout(r, 800));
+        }
+      }
+
+      if (allMcqIds.length > 0) {
+        const testData: Partial<MockTest> = {
+          title: aiTestConfig.title,
+          description: `AI Generated Full Mock Test with ${allMcqIds.length} questions across all sections.`,
+          category: "all",
+          type: "full",
+          duration: aiTestConfig.duration,
+          totalMarks: aiTestConfig.totalMarks,
+          questions: allMcqIds,
+          createdAt: serverTimestamp() as any
+        };
+        
+        await addDoc(collection(db, "mockTests"), testData);
+        addLog(`Mock Test "${aiTestConfig.title}" created successfully with ${allMcqIds.length} questions!`, "success");
+        fetchMockTests();
+        setIsAiTestModalOpen(false);
+      } else {
+        addLog("No questions were generated. Mock test creation aborted.", "error");
+      }
+    } catch (error: any) {
+      addLog(`Error during AI Mock Test Generation: ${error.message}`, "error");
+    } finally {
+      setLoading(false);
+      setSeedingStatus("");
+    }
+  };
+
+  const handleSaveTest = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setLoading(true);
+    try {
+      const { id, ...data } = editingTest;
+      if (id) await updateDoc(doc(db, "mockTests", id), data);
+      else await addDoc(collection(db, "mockTests"), { ...data, createdAt: serverTimestamp() });
+      setIsTestModalOpen(false);
+      fetchMockTests();
+    } catch (error) {
+      handleFirestoreError(error, OperationType.WRITE, "mockTests");
+    } finally {
+      setLoading(false);
+    }
+  };
 
   const fetchManageQuestions = async () => {
     setLoading(true);
@@ -331,31 +473,29 @@ export default function Admin({ user }: AdminProps) {
       </div>
 
       {/* Tabs */}
-      <div className="flex border-b border-slate-200 gap-8">
-        <button 
-          onClick={() => setActiveTab("seeding")}
-          className={`pb-4 text-sm font-black uppercase tracking-widest transition-all relative ${
-            activeTab === "seeding" ? "text-blue-600" : "text-slate-400 hover:text-slate-600"
-          }`}
-        >
-          AI Seeding
-          {activeTab === "seeding" && <motion.div layoutId="tab" className="absolute bottom-0 left-0 right-0 h-1 bg-blue-600 rounded-full" />}
-        </button>
-        <button 
-          onClick={() => setActiveTab("manage")}
-          className={`pb-4 text-sm font-black uppercase tracking-widest transition-all relative ${
-            activeTab === "manage" ? "text-blue-600" : "text-slate-400 hover:text-slate-600"
-          }`}
-        >
-          Manage Questions
-          {activeTab === "manage" && <motion.div layoutId="tab" className="absolute bottom-0 left-0 right-0 h-1 bg-blue-600 rounded-full" />}
-        </button>
+      <div className="flex gap-4 p-1 bg-slate-200/50 rounded-2xl w-fit">
+        {[
+          { id: "ai-generator", label: "AI Mock Test Generator", icon: Zap },
+          { id: "mock-tests", label: "Mock Test Management", icon: FileText },
+          { id: "questions", label: "Question Management", icon: Database },
+        ].map(tab => (
+          <button
+            key={tab.id}
+            onClick={() => setActiveTab(tab.id as any)}
+            className={`flex items-center gap-2 px-6 py-3 rounded-xl font-black uppercase tracking-widest text-[10px] transition-all ${
+              activeTab === tab.id ? "bg-white text-blue-600 shadow-sm" : "text-slate-500 hover:text-slate-700"
+            }`}
+          >
+            <tab.icon size={14} />
+            {tab.label}
+          </button>
+        ))}
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-12">
         {/* Main Content Area */}
         <div className="lg:col-span-2 space-y-8">
-          {activeTab === "seeding" ? (
+          {activeTab === "ai-generator" && (
             <div className="bg-slate-900 rounded-[2.5rem] p-8 md:p-12 text-white relative overflow-hidden border border-slate-800">
               <div className="absolute top-0 right-0 w-64 h-64 bg-blue-600 rounded-full blur-[120px] opacity-20 -translate-y-1/2 translate-x-1/2" />
               
@@ -365,82 +505,81 @@ export default function Admin({ user }: AdminProps) {
                     <Zap size={14} />
                     <span>AI Content Engine</span>
                   </div>
-                  <h2 className="text-3xl font-black">Seed Mock Tests</h2>
+                  <h2 className="text-3xl font-black">AI Mock Test Generator</h2>
                   <p className="text-slate-400">
-                    Use Gemini 3 Flash to generate high-quality MCQs. Select a category or seed the entire syllabus at once.
+                    Generate a full-syllabus mock test automatically. Configure the parameters below and let Gemini AI build the content.
                   </p>
+                </div>
+
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                  <div className="space-y-2">
+                    <label className="text-xs font-black uppercase tracking-widest text-slate-400">Test Title</label>
+                    <input 
+                      type="text"
+                      value={aiTestConfig.title}
+                      onChange={(e) => setAiTestConfig({...aiTestConfig, title: e.target.value})}
+                      className="w-full bg-slate-800 border border-slate-700 rounded-xl px-4 py-3 text-white focus:ring-2 focus:ring-blue-500 outline-none"
+                      placeholder="e.g. Full Mock Test #1"
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <label className="text-xs font-black uppercase tracking-widest text-slate-400">Difficulty</label>
+                    <select 
+                      value={aiTestConfig.difficulty}
+                      onChange={(e) => setAiTestConfig({...aiTestConfig, difficulty: e.target.value})}
+                      className="w-full bg-slate-800 border border-slate-700 rounded-xl px-4 py-3 text-white focus:ring-2 focus:ring-blue-500 outline-none"
+                    >
+                      <option value="mixed">Mixed</option>
+                      <option value="easy">Easy</option>
+                      <option value="medium">Medium</option>
+                      <option value="hard">Hard</option>
+                    </select>
+                  </div>
                 </div>
 
                 <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
                   <div className="space-y-2">
-                    <label className="text-xs font-black uppercase tracking-widest text-slate-400">Select Scope</label>
-                    <select 
-                      value={selectedCategory}
-                      onChange={(e) => setSelectedCategory(e.target.value)}
-                      disabled={loading}
-                      className="w-full bg-slate-800 border border-slate-700 rounded-xl px-4 py-3 text-white focus:ring-2 focus:ring-blue-500 outline-none disabled:opacity-50"
-                    >
-                      <option value="all">All Categories (Full Syllabus)</option>
-                      {CATEGORIES.map(c => (
-                        <option key={c.id} value={c.id}>{c.name}</option>
-                      ))}
-                    </select>
-                  </div>
-
-                  <div className="space-y-2">
-                    <label className="text-xs font-black uppercase tracking-widest text-slate-400">Difficulty</label>
-                    <select 
-                      value={selectedDifficulty}
-                      onChange={(e) => setSelectedDifficulty(e.target.value)}
-                      disabled={loading}
-                      className="w-full bg-slate-800 border border-slate-700 rounded-xl px-4 py-3 text-white focus:ring-2 focus:ring-blue-500 outline-none disabled:opacity-50"
-                    >
-                      <option value="mixed">Mixed Difficulties</option>
-                      <option value="easy">Easy Only</option>
-                      <option value="medium">Medium Only</option>
-                      <option value="hard">Hard Only</option>
-                    </select>
-                  </div>
-
-                  <div className="space-y-2">
-                    <label className="text-xs font-black uppercase tracking-widest text-slate-400">Questions per Topic</label>
+                    <label className="text-xs font-black uppercase tracking-widest text-slate-400">Questions per Section</label>
                     <input 
                       type="number"
-                      min="1"
-                      max="20"
-                      value={questionsPerTopic}
-                      onChange={(e) => setQuestionsPerTopic(parseInt(e.target.value) || 0)}
-                      disabled={loading}
-                      className="w-full bg-slate-800 border border-slate-700 rounded-xl px-4 py-3 text-white focus:ring-2 focus:ring-blue-500 outline-none disabled:opacity-50"
+                      value={aiTestConfig.questionsPerCategory}
+                      onChange={(e) => setAiTestConfig({...aiTestConfig, questionsPerCategory: parseInt(e.target.value) || 0})}
+                      className="w-full bg-slate-800 border border-slate-700 rounded-xl px-4 py-3 text-white focus:ring-2 focus:ring-blue-500 outline-none"
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <label className="text-xs font-black uppercase tracking-widest text-slate-400">Duration (Mins)</label>
+                    <input 
+                      type="number"
+                      value={aiTestConfig.duration}
+                      onChange={(e) => setAiTestConfig({...aiTestConfig, duration: parseInt(e.target.value) || 0})}
+                      className="w-full bg-slate-800 border border-slate-700 rounded-xl px-4 py-3 text-white focus:ring-2 focus:ring-blue-500 outline-none"
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <label className="text-xs font-black uppercase tracking-widest text-slate-400">Total Marks</label>
+                    <input 
+                      type="number"
+                      value={aiTestConfig.totalMarks}
+                      onChange={(e) => setAiTestConfig({...aiTestConfig, totalMarks: parseInt(e.target.value) || 0})}
+                      className="w-full bg-slate-800 border border-slate-700 rounded-xl px-4 py-3 text-white focus:ring-2 focus:ring-blue-500 outline-none"
                     />
                   </div>
                 </div>
 
-                <div className="flex items-center gap-3">
-                  <label className="flex items-center gap-3 cursor-pointer group">
-                    <div className="relative">
-                      <input 
-                        type="checkbox" 
-                        className="sr-only"
-                        checked={skipExisting}
-                        onChange={(e) => setSkipExisting(e.target.checked)}
-                        disabled={loading}
-                      />
-                      <div className={`w-12 h-6 rounded-full transition-colors ${skipExisting ? 'bg-blue-600' : 'bg-slate-700'}`} />
-                      <div className={`absolute top-1 left-1 w-4 h-4 bg-white rounded-full transition-transform ${skipExisting ? 'translate-x-6' : ''}`} />
-                    </div>
-                    <span className="text-sm font-bold text-slate-300 group-hover:text-white transition-colors">Skip topics with existing questions</span>
-                  </label>
+                <div className="p-4 bg-slate-800/50 rounded-2xl border border-slate-700 flex justify-between items-center">
+                  <span className="text-xs font-black text-slate-400 uppercase">Estimated Total Questions:</span>
+                  <span className="text-xl font-black text-blue-400">{aiTestConfig.questionsPerCategory * CATEGORIES.length}</span>
                 </div>
 
                 <div className="flex flex-col gap-4">
                   {!loading ? (
                     <button
-                      onClick={handleSeedData}
+                      onClick={handleGenerateAiMockTest}
                       className="w-full bg-blue-600 text-white px-8 py-5 rounded-2xl font-black text-lg hover:bg-blue-700 transition-all shadow-xl shadow-blue-900/20 active:scale-95 flex items-center justify-center gap-3"
                     >
                       <Zap size={20} />
-                      <span>Generate with Gemini AI</span>
+                      <span>Generate Full Mock Test</span>
                     </button>
                   ) : (
                     <div className="flex gap-4">
@@ -463,7 +602,47 @@ export default function Admin({ user }: AdminProps) {
                 </div>
               </div>
             </div>
-          ) : (
+          )}
+
+          {activeTab === "mock-tests" && (
+            <div className="bg-white p-8 rounded-[2.5rem] border border-slate-100 shadow-sm space-y-6">
+              <div className="flex justify-between items-center">
+                <h2 className="text-2xl font-black text-slate-900">Mock Test Management</h2>
+                <button 
+                  onClick={() => {
+                    setEditingTest({ title: "", description: "", category: CATEGORIES[0].id, type: "full", duration: 60, totalMarks: 100, questions: [] });
+                    setIsTestModalOpen(true);
+                  }}
+                  className="p-3 bg-blue-600 text-white rounded-xl hover:bg-blue-700 transition-all"
+                >
+                  <Plus />
+                </button>
+              </div>
+
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                {mockTests.map(test => (
+                  <div key={test.id} className="p-6 bg-slate-50 rounded-3xl border border-slate-100 space-y-4 group">
+                    <div className="flex justify-between items-start">
+                      <div className="space-y-1">
+                        <span className="px-2 py-1 bg-blue-100 text-blue-700 rounded-lg text-[10px] font-black uppercase tracking-widest">{test.type}</span>
+                        <h3 className="text-lg font-black text-slate-900">{test.title}</h3>
+                      </div>
+                      <div className="flex gap-2 opacity-0 group-hover:opacity-100 transition-all">
+                        <button onClick={() => { setEditingTest(test); setIsTestModalOpen(true); }} className="p-2 text-blue-600 hover:bg-blue-100 rounded-lg"><RefreshCw size={16} /></button>
+                        <button onClick={async () => { if(confirm("Delete?")) { await deleteDoc(doc(db, "mockTests", test.id!)); fetchMockTests(); } }} className="p-2 text-red-600 hover:bg-red-100 rounded-lg"><Trash2 size={16} /></button>
+                      </div>
+                    </div>
+                    <div className="flex justify-between text-xs font-bold text-slate-500">
+                      <span>{test.questions.length} Questions</span>
+                      <span>{test.duration} Mins</span>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {activeTab === "questions" && (
             <div className="space-y-6">
               <div className="bg-white p-8 rounded-[2.5rem] border border-slate-100 shadow-sm space-y-6">
                 <div className="flex flex-col md:flex-row gap-4 items-end">
@@ -541,7 +720,7 @@ export default function Admin({ user }: AdminProps) {
                             <RefreshCw size={18} />
                           </button>
                           <button 
-                            onClick={() => handleDeleteQuestion(q.id)}
+                            onClick={() => handleDeleteQuestion(q.id!)}
                             className="p-2 text-red-600 hover:bg-red-50 rounded-lg transition-all"
                           >
                             <Trash2 size={18} />
@@ -646,6 +825,114 @@ export default function Admin({ user }: AdminProps) {
           </div>
         </div>
       </div>
+
+      {/* Mock Test Modal */}
+      <AnimatePresence>
+        {isTestModalOpen && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-sm">
+            <motion.div initial={{ opacity: 0, scale: 0.95 }} animate={{ opacity: 1, scale: 1 }} exit={{ opacity: 0, scale: 0.95 }} className="bg-white rounded-[2.5rem] w-full max-w-4xl max-h-[90vh] overflow-hidden shadow-2xl flex flex-col">
+              <div className="p-8 border-b border-slate-100 flex justify-between items-center bg-slate-50/50">
+                <div>
+                  <h2 className="text-2xl font-black text-slate-900">{editingTest?.id ? "Edit Mock Test" : "Create Mock Test"}</h2>
+                  <p className="text-slate-500 text-sm font-bold">Configure test details and select questions</p>
+                </div>
+                <button onClick={() => setIsTestModalOpen(false)} className="p-2 hover:bg-slate-200 rounded-full transition-all"><XCircle size={24} className="text-slate-400" /></button>
+              </div>
+
+              <div className="flex-1 overflow-y-auto p-8 space-y-8">
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                  <div className="space-y-2">
+                    <label className="text-xs font-black uppercase tracking-widest text-slate-400">Test Title</label>
+                    <input type="text" value={editingTest?.title} onChange={e => setEditingTest({...editingTest, title: e.target.value})} className="w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-3 focus:ring-2 focus:ring-blue-500 outline-none" />
+                  </div>
+                  <div className="space-y-2">
+                    <label className="text-xs font-black uppercase tracking-widest text-slate-400">Category</label>
+                    <select value={editingTest?.category} onChange={e => setEditingTest({...editingTest, category: e.target.value})} className="w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-3 focus:ring-2 focus:ring-blue-500 outline-none">
+                      <option value="all">All Sections (Full Mock)</option>
+                      {CATEGORIES.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
+                    </select>
+                  </div>
+                </div>
+
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+                  <div className="space-y-2">
+                    <label className="text-xs font-black uppercase tracking-widest text-slate-400">Type</label>
+                    <select value={editingTest?.type} onChange={e => setEditingTest({...editingTest, type: e.target.value})} className="w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-3 focus:ring-2 focus:ring-blue-500 outline-none">
+                      <option value="full">Full Mock</option>
+                      <option value="sectional">Sectional</option>
+                      <option value="topic">Topic-wise</option>
+                    </select>
+                  </div>
+                  <div className="space-y-2">
+                    <label className="text-xs font-black uppercase tracking-widest text-slate-400">Duration (Mins)</label>
+                    <input type="number" value={editingTest?.duration} onChange={e => setEditingTest({...editingTest, duration: parseInt(e.target.value) || 0})} className="w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-3 focus:ring-2 focus:ring-blue-500 outline-none" />
+                  </div>
+                  <div className="space-y-2">
+                    <label className="text-xs font-black uppercase tracking-widest text-slate-400">Total Marks</label>
+                    <input type="number" value={editingTest?.totalMarks} onChange={e => setEditingTest({...editingTest, totalMarks: parseInt(e.target.value) || 0})} className="w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-3 focus:ring-2 focus:ring-blue-500 outline-none" />
+                  </div>
+                </div>
+
+                <div className="space-y-4">
+                  <div className="flex justify-between items-end">
+                    <div className="flex-1 space-y-2">
+                      <label className="text-xs font-black uppercase tracking-widest text-slate-400">Select Questions ({editingTest?.questions?.length || 0} selected)</label>
+                      <div className="relative">
+                        <input 
+                          type="text" 
+                          placeholder="Search questions to add..." 
+                          value={testMcqSearch}
+                          onChange={e => setTestMcqSearch(e.target.value)}
+                          className="w-full bg-slate-50 border border-slate-200 rounded-xl pl-10 pr-4 py-3 focus:ring-2 focus:ring-blue-500 outline-none"
+                        />
+                        <Database className="absolute left-3 top-3.5 text-slate-400" size={18} />
+                      </div>
+                    </div>
+                  </div>
+
+                  <div className="grid grid-cols-1 gap-2 max-h-64 overflow-y-auto p-2 bg-slate-50 rounded-2xl border border-slate-100">
+                    {isSearchingMcqs ? (
+                      <div className="p-8 text-center text-slate-400 animate-pulse font-bold uppercase tracking-widest text-xs">Searching database...</div>
+                    ) : testMcqResults.length === 0 ? (
+                      <div className="p-8 text-center text-slate-400 font-bold uppercase tracking-widest text-xs">No questions found</div>
+                    ) : (
+                      testMcqResults.map(mcq => {
+                        const isSelected = editingTest?.questions?.includes(mcq.id);
+                        return (
+                          <button
+                            key={mcq.id}
+                            onClick={() => {
+                              const current = editingTest.questions || [];
+                              const next = isSelected ? current.filter((id: string) => id !== mcq.id) : [...current, mcq.id];
+                              setEditingTest({...editingTest, questions: next});
+                            }}
+                            className={`p-4 rounded-xl border text-left transition-all flex justify-between items-center ${
+                              isSelected ? "bg-blue-50 border-blue-200 ring-1 ring-blue-200" : "bg-white border-slate-100 hover:border-slate-200"
+                            }`}
+                          >
+                            <div className="flex-1">
+                              <p className="text-sm font-bold text-slate-900 line-clamp-1">{mcq.question}</p>
+                              <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest">{mcq.topic}</p>
+                            </div>
+                            {isSelected && <CheckCircle size={18} className="text-blue-600 ml-4 shrink-0" />}
+                          </button>
+                        );
+                      })
+                    )}
+                  </div>
+                </div>
+              </div>
+
+              <div className="p-8 border-t border-slate-100 bg-slate-50/50 flex gap-4">
+                <button onClick={() => setIsTestModalOpen(false)} className="flex-1 px-8 py-4 rounded-2xl font-black text-slate-500 hover:bg-slate-200 transition-all">Cancel</button>
+                <button onClick={handleSaveTest} disabled={loading} className="flex-1 bg-blue-600 text-white px-8 py-4 rounded-2xl font-black hover:bg-blue-700 transition-all shadow-lg shadow-blue-900/20 disabled:opacity-50">
+                  {loading ? "Saving..." : "Save Mock Test"}
+                </button>
+              </div>
+            </motion.div>
+          </div>
+        )}
+      </AnimatePresence>
 
       {/* Edit Modal */}
       <AnimatePresence>
