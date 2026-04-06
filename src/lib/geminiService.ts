@@ -3,13 +3,17 @@ import { MCQ } from "../types";
 
 const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY || "" });
 
-export async function generateMCQs(category: string, topic: string, count: number = 5): Promise<MCQ[]> {
+export async function generateMCQs(category: string, topic: string, count: number = 5, difficulty: string = "mixed"): Promise<MCQ[]> {
   try {
+    const difficultyInstruction = difficulty === "mixed" 
+      ? "Include a mix of easy, medium, and hard difficulties." 
+      : `All questions must be of "${difficulty}" difficulty.`;
+
     const response: GenerateContentResponse = await ai.models.generateContent({
       model: "gemini-3-flash-preview",
       contents: `Generate ${count} high-quality MCQ questions for the exam category "${category}" and topic "${topic}". 
       The questions should be relevant to JKSSB and SSC exams. 
-      Include a mix of easy, medium, and hard difficulties. 
+      ${difficultyInstruction}
       Each question must have 4 options, a correct answer, and a detailed explanation.`,
       config: {
         responseMimeType: "application/json",

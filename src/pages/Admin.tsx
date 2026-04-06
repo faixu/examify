@@ -24,6 +24,7 @@ export default function Admin({ user }: AdminProps) {
   const [stats, setStats] = useState<Record<string, number>>({});
   const [seedingStatus, setSeedingStatus] = useState<string>("");
   const [selectedCategory, setSelectedCategory] = useState<string>("all");
+  const [selectedDifficulty, setSelectedDifficulty] = useState<string>("mixed");
   const [questionsPerTopic, setQuestionsPerTopic] = useState<number>(5);
   const [skipExisting, setSkipExisting] = useState<boolean>(true);
   const [logs, setLogs] = useState<LogEntry[]>([]);
@@ -114,7 +115,7 @@ export default function Admin({ user }: AdminProps) {
           addLog(`Generating ${questionsPerTopic} questions for ${topic.name}...`, "info");
           
           try {
-            const mcqs = await generateMCQs(cat.id, topic.id, questionsPerTopic);
+            const mcqs = await generateMCQs(cat.id, topic.id, questionsPerTopic, selectedDifficulty);
             const batch = writeBatch(db);
             
             mcqs.forEach(mcq => {
@@ -258,7 +259,7 @@ export default function Admin({ user }: AdminProps) {
               </p>
             </div>
 
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
               <div className="space-y-2">
                 <label className="text-xs font-black uppercase tracking-widest text-slate-400">Select Scope</label>
                 <select 
@@ -271,6 +272,21 @@ export default function Admin({ user }: AdminProps) {
                   {CATEGORIES.map(c => (
                     <option key={c.id} value={c.id}>{c.name}</option>
                   ))}
+                </select>
+              </div>
+
+              <div className="space-y-2">
+                <label className="text-xs font-black uppercase tracking-widest text-slate-400">Difficulty</label>
+                <select 
+                  value={selectedDifficulty}
+                  onChange={(e) => setSelectedDifficulty(e.target.value)}
+                  disabled={loading}
+                  className="w-full bg-slate-800 border border-slate-700 rounded-xl px-4 py-3 text-white focus:ring-2 focus:ring-blue-500 outline-none disabled:opacity-50"
+                >
+                  <option value="mixed">Mixed Difficulties</option>
+                  <option value="easy">Easy Only</option>
+                  <option value="medium">Medium Only</option>
+                  <option value="hard">Hard Only</option>
                 </select>
               </div>
 
