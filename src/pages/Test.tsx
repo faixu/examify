@@ -60,12 +60,16 @@ export default function Test({ user }: TestProps) {
 
       // Update User XP and Streak
       const userRef = doc(db, "users", user.uid);
+      const profileRef = doc(db, "profiles", user.uid);
       const xpGained = score * 10 + (accuracy === 100 ? 50 : 0);
       
-      await updateDoc(userRef, {
+      const updateData = {
         xp: increment(xpGained),
         lastActive: new Date().toISOString(),
-      });
+      };
+      
+      await updateDoc(userRef, updateData);
+      await updateDoc(profileRef, updateData);
 
       // Save Attempt
       const attempt: TestAttempt = {

@@ -12,7 +12,7 @@ export default function Leaderboard() {
   useEffect(() => {
     const fetchLeaderboard = async () => {
       setLoading(true);
-      const q = query(collection(db, "users"), orderBy("xp", "desc"), limit(10));
+      const q = query(collection(db, "profiles"), orderBy("xp", "desc"), limit(10));
       const querySnapshot = await getDocs(q);
       const users = querySnapshot.docs.map(doc => doc.data() as UserProfile);
       setTopUsers(users);

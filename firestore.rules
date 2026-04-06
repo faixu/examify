@@ -51,7 +51,8 @@ service cloud.firestore {
     }
     function isAdmin() {
       return isAuthenticated() && 
-        (get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'admin' ||
+        ((exists(/databases/$(database)/documents/users/$(request.auth.uid)) && 
+          get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'admin') ||
          (request.auth.token.email == "Flust786@gmail.com" && request.auth.token.email_verified == true));
     }
     function isValidEmail(email) {
@@ -85,6 +86,12 @@ service cloud.firestore {
              data.score is number &&
              data.timestamp is timestamp;
     }
+    function isValidProfile(data) {
+      return hasRequiredFields(['uid']) &&
+             data.uid == request.auth.uid &&
+             (!('xp' in data) || data.xp is number) &&
+             (!('streak' in data) || data.streak is number);
+    }
 
     // ===============================================================
     // Rules
@@ -93,6 +100,12 @@ service cloud.firestore {
       allow read: if isOwner(userId) || isAdmin();
       allow create: if isOwner(userId) && isValidUser(request.resource.data) && (!('role' in request.resource.data) || isAdmin());
       allow update: if isOwner(userId) && isValidUser(request.resource.data) && (request.resource.data.role == resource.data.role || isAdmin());
+    }
+
+    match /profiles/{userId} {
+      allow read: if true; // Public profiles for leaderboard
+      allow create: if isOwner(userId) && isValidProfile(request.resource.data);
+      allow update: if isOwner(userId) && isValidProfile(request.resource.data);
     }
 
     match /mcqs/{mcqId} {

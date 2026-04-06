@@ -35,7 +35,13 @@ export default function App() {
             badges: ["Beginner"],
             rank: "Novice",
           };
+          // Write to private users collection
           await setDoc(doc(db, "users", firebaseUser.uid), newUser);
+          
+          // Write to public profiles collection (no email)
+          const { email, ...publicProfile } = newUser;
+          await setDoc(doc(db, "profiles", firebaseUser.uid), publicProfile);
+          
           setUser(newUser);
         }
       } else {
