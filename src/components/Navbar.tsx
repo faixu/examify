@@ -11,7 +11,27 @@ interface NavbarProps {
 
 export default function Navbar({ user }: NavbarProps) {
   const [isOpen, setIsOpen] = useState(false);
+  const [logoClicks, setLogoClicks] = useState(0);
+  const [revealAdmin, setRevealAdmin] = useState(false);
+  const [clickTimeout, setClickTimeout] = useState<NodeJS.Timeout | null>(null);
   const navigate = useNavigate();
+
+  const handleLogoClick = () => {
+    if (clickTimeout) clearTimeout(clickTimeout);
+    
+    const newClicks = logoClicks + 1;
+    setLogoClicks(newClicks);
+    
+    if (newClicks === 5) {
+      setRevealAdmin(true);
+      setLogoClicks(0);
+    } else {
+      const timeout = setTimeout(() => {
+        setLogoClicks(0);
+      }, 2000);
+      setClickTimeout(timeout);
+    }
+  };
 
   const handleLogin = async () => {
     try {
@@ -39,7 +59,7 @@ export default function Navbar({ user }: NavbarProps) {
 
   if (user) {
     navLinks.push({ name: "Dashboard", path: "/dashboard", icon: LayoutDashboard });
-    if (user.email === "Flust786@gmail.com") {
+    if (user.email === "Flust786@gmail.com" || revealAdmin) {
       navLinks.push({ name: "Admin", path: "/admin", icon: Database });
     }
   }
@@ -49,7 +69,11 @@ export default function Navbar({ user }: NavbarProps) {
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
         <div className="flex justify-between h-16">
           <div className="flex items-center">
-            <Link to="/" className="flex-shrink-0 flex items-center gap-2">
+            <Link 
+              to="/" 
+              onClick={handleLogoClick}
+              className="flex-shrink-0 flex items-center gap-2 select-none"
+            >
               <div className="w-8 h-8 bg-blue-600 rounded-lg flex items-center justify-center">
                 <span className="text-white font-bold text-xl">E</span>
               </div>
