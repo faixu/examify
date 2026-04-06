@@ -85,7 +85,7 @@ export default function Navbar({ user }: NavbarProps) {
                 className="flex items-center gap-2 bg-blue-600 text-white px-5 py-2 rounded-lg font-semibold hover:bg-blue-700 transition-all shadow-sm active:scale-95"
               >
                 <LogIn size={18} />
-                Sign In
+                Sign In with Google
               </button>
             )}
           </div>

@@ -1,13 +1,22 @@
 import { Link } from "react-router-dom";
 import { UserProfile } from "../types";
 import { motion } from "motion/react";
-import { ArrowRight, CheckCircle, Trophy, Zap, Users, BookOpen, Star } from "lucide-react";
+import { ArrowRight, CheckCircle, Trophy, Zap, Users, BookOpen, Star, LogIn } from "lucide-react";
+import { auth, googleProvider, signInWithPopup } from "../firebase";
 
 interface HomeProps {
   user: UserProfile | null;
 }
 
 export default function Home({ user }: HomeProps) {
+  const handleLogin = async () => {
+    try {
+      await signInWithPopup(auth, googleProvider);
+    } catch (error) {
+      console.error("Login failed", error);
+    }
+  };
+
   const containerVariants = {
     hidden: { opacity: 0 },
     visible: {
@@ -176,10 +185,11 @@ export default function Home({ user }: HomeProps) {
           </Link>
           {!user && (
             <button
-              onClick={() => {}} // Handle login
-              className="w-full sm:w-auto bg-blue-700 text-white border border-blue-500 px-10 py-4 rounded-xl font-bold text-lg hover:bg-blue-800 transition-all active:scale-95"
+              onClick={handleLogin}
+              className="w-full sm:w-auto bg-blue-700 text-white border border-blue-500 px-10 py-4 rounded-xl font-bold text-lg hover:bg-blue-800 transition-all active:scale-95 flex items-center justify-center gap-2"
             >
-              Sign Up for Free
+              <LogIn size={20} />
+              Sign Up with Google
             </button>
           )}
         </div>
