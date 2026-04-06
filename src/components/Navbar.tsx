@@ -16,8 +16,9 @@ export default function Navbar({ user }: NavbarProps) {
   const handleLogin = async () => {
     try {
       await signInWithPopup(auth, googleProvider);
-    } catch (error) {
+    } catch (error: any) {
       console.error("Login failed", error);
+      alert(`Login failed: ${error.message || "Unknown error"}. If this is an "unauthorized domain" error, please ensure the app domain is added to Firebase Console > Auth > Settings > Authorized Domains.`);
     }
   };
 
