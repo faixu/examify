@@ -14,6 +14,7 @@ import SuperAdmin from "./pages/SuperAdmin";
 import Leaderboard from "./pages/Leaderboard";
 import About from "./pages/About";
 import { motion, AnimatePresence } from "motion/react";
+import { SpeedInsights } from "@vercel/speed-insights/react";
 
 export default function App() {
   const [user, setUser] = useState<UserProfile | null>(null);
@@ -87,6 +88,7 @@ export default function App() {
           </AnimatePresence>
         </main>
         <Footer />
+        <SpeedInsights />
       </div>
     </Router>
   );
