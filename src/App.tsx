@@ -14,6 +14,7 @@ import SuperAdmin from "./pages/SuperAdmin";
 import Leaderboard from "./pages/Leaderboard";
 import About from "./pages/About";
 import { motion, AnimatePresence } from "motion/react";
+import { Analytics } from "@vercel/analytics/react";
 
 export default function App() {
   const [user, setUser] = useState<UserProfile | null>(null);
@@ -88,6 +89,7 @@ export default function App() {
         </main>
         <Footer />
       </div>
+      <Analytics />
     </Router>
   );
 }
